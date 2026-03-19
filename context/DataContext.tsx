@@ -70,78 +70,81 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (al.data) setAuditLogs(al.data.map(l => ({ ...l, timestamp: l.timestamp || l.created_at })));
   };
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => {
+    loadAll();
+
+    // Set up Realtime subscriptions for all tables
+    const channels = [
+      "farmers", "farms", "workers", "payments", "shops", "sales", "products", "stock_transactions", "audit_logs"
+    ].map(table => 
+      supabase
+        .channel(`public:${table}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table }, () => {
+          loadAll(); // Reload all data when any change occurs
+        })
+        .subscribe()
+    );
+
+    return () => {
+      channels.forEach(channel => supabase.removeChannel(channel));
+    };
+  }, []);
 
   const addFarmer = async (data: Omit<Farmer, "id" | "createdAt">) => {
     await supabase.from("farmers").insert([data]);
     await logAuditAction("FARMER_ADDED", `Added farmer ${data.name}`);
-    await loadAll();
   };
   const updateFarmer = async (id: string, data: Partial<Farmer>) => {
     await supabase.from("farmers").update(data).eq("id", id);
-    await loadAll();
   };
   const deleteFarmer = async (id: string) => {
     await supabase.from("farmers").delete().eq("id", id);
-    await loadAll();
   };
 
   const addFarm = async (data: Omit<Farm, "id" | "createdAt">) => {
     await supabase.from("farms").insert([data]);
     await logAuditAction("FARM_ADDED", `Added farm ${data.name}`);
-    await loadAll();
   };
   const updateFarm = async (id: string, data: Partial<Farm>) => {
     await supabase.from("farms").update(data).eq("id", id);
-    await loadAll();
   };
   const deleteFarm = async (id: string) => {
     await supabase.from("farms").delete().eq("id", id);
-    await loadAll();
   };
 
   const addWorker = async (data: Omit<Worker, "id" | "createdAt">) => {
     await supabase.from("workers").insert([data]);
     await logAuditAction("WORKER_ADDED", `Added worker ${data.name}`);
-    await loadAll();
   };
   const updateWorker = async (id: string, data: Partial<Worker>) => {
     await supabase.from("workers").update(data).eq("id", id);
-    await loadAll();
   };
   const deleteWorker = async (id: string) => {
     await supabase.from("workers").delete().eq("id", id);
-    await loadAll();
   };
 
   const addPayment = async (data: Omit<Payment, "id" | "createdAt" | "updatedAt">) => {
     await supabase.from("payments").insert([data]);
     await logAuditAction("PAYMENT_INITIATED", `Payment of KES ${data.amount} for ${data.workerName} initiated`);
-    await loadAll();
   };
   const updatePayment = async (id: string, data: Partial<Payment>) => {
     await supabase.from("payments").update(data).eq("id", id);
-    await loadAll();
   };
 
   const addShop = async (data: Omit<Shop, "id" | "createdAt">) => {
     await supabase.from("shops").insert([data]);
-    await loadAll();
   };
 
   const addSale = async (data: Omit<Sale, "id" | "createdAt">) => {
     await supabase.from("sales").insert([data]);
     await logAuditAction("SALE_RECORDED", `Sale of KES ${data.totalRevenue} recorded`);
-    await loadAll();
   };
 
   const addProduct = async (data: Omit<Product, "id" | "createdAt">) => {
     await supabase.from("products").insert([data]);
-    await loadAll();
   };
   const updateProduct = async (id: string, data: Partial<Product>) => {
     await supabase.from("products").update(data).eq("id", id);
-    await loadAll();
   };
 
   const addStockTransaction = async (data: Omit<StockTransaction, "id" | "createdAt">) => {
@@ -151,7 +154,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const newStock = data.type === "in" ? product.currentStock + data.quantity : Math.max(0, product.currentStock - data.quantity);
       await updateProduct(data.productId, { currentStock: newStock });
     }
-    await loadAll();
   };
 
   const refreshAuditLogs = async () => {
