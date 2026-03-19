@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-// These are your provided Supabase credentials
+// These are your Supabase credentials for the remote database
 const supabaseUrl = "https://hfiavxqknxbnlyvzsdni.supabase.co";
 const supabaseKey = "sb_publishable_Pdyi3eYuq2eHGuL85FW5uA_V9FeIic8";
 

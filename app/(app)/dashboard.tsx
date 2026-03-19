@@ -17,16 +17,7 @@ import { useData } from "@/context/DataContext";
 import { StatCard } from "@/components/StatCard";
 import { RoleBadge } from "@/components/RoleBadge";
 import { COLORS, ROLE_LABELS } from "@/constants/colors";
-// example: src/screens/FarmScreen.js
-import { supabase } from '../lib/supabase';
 
-async function fetchFarms() {
-  const { data, error } = await supabase
-    .from('farms')
-    .select('*');
-  if (error) console.error(error);
-  else return data;
-}
 export default function DashboardScreen() {
   const { currentUser, logout } = useAuth();
   const { farmers, farms, workers, payments, sales, products, auditLogs } = useData();
@@ -59,7 +50,6 @@ export default function DashboardScreen() {
 
   const isDirector = currentUser?.role === "director";
   const isCEO = currentUser?.role === "ceo";
-  const canManage = isDirector || isCEO || currentUser?.role === "manager";
 
   return (
     <View style={[styles.container, { backgroundColor: COLORS.bg }]}>
