@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, ReactNo
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as LocalAuthentication from "expo-local-authentication";
 import { Platform } from "react-native";
+import { supabase } from "@/app/lib/supabase";
 
 export type UserRole = "director" | "ceo" | "manager" | "accountant" | "field_officer";
 
@@ -35,26 +36,13 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const STORAGE_KEYS = {
-  USERS: "abfi_users",
   CURRENT_USER: "abfi_current_user",
-  AUDIT_LOGS: "abfi_audit_logs",
   SAVED_EMAIL: "abfi_saved_email",
-};
-
-const DEFAULT_DIRECTOR: AppUser = {
-  id: "director_001",
-  name: "Harmony Nyaga",
-  email: "harmony@abfi.com",
-  password: "teclaharm",
-  role: "director",
-  active: true,
-  createdBy: "system",
-  createdAt: new Date("2024-01-01").toISOString(),
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
-  const [users, setUsers] = useState<AppUser[]>([DEFAULT_DIRECTOR]);
+  const [users, setUsers] = useState<AppUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [hasSavedCredentials, setHasSavedCredentials] = useState(false);
@@ -75,23 +63,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const fetchUsers = async () => {
+    const { data, error } = await supabase.from("users").select("*");
+    if (!error && data) setUsers(data);
+  };
+
   const initializeAuth = async () => {
     try {
-      const storedUsers = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
-      if (storedUsers) {
-        const parsedUsers: AppUser[] = JSON.parse(storedUsers);
-        const idx = parsedUsers.findIndex((u) => u.role === "director");
-        if (idx === -1) {
-          parsedUsers.unshift(DEFAULT_DIRECTOR);
-        } else {
-          parsedUsers[idx] = DEFAULT_DIRECTOR;
-        }
-        await AsyncStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(parsedUsers));
-        setUsers(parsedUsers);
-      } else {
-        await AsyncStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify([DEFAULT_DIRECTOR]));
-      }
-
+      await fetchUsers();
       const savedEmail = await AsyncStorage.getItem(STORAGE_KEYS.SAVED_EMAIL);
       if (savedEmail) setHasSavedCredentials(true);
 
@@ -107,14 +86,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    const storedUsers = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
-    const allUsers: AppUser[] = storedUsers ? JSON.parse(storedUsers) : [DEFAULT_DIRECTOR];
+    const { data: user, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("email", email.toLowerCase())
+      .eq("password", password)
+      .single();
 
-    const user = allUsers.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-    );
-
-    if (!user) return { success: false, error: "Invalid email or password" };
+    if (error || !user) return { success: false, error: "Invalid email or password" };
     if (!user.active) return { success: false, error: "Account has been deactivated" };
 
     await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
@@ -130,24 +109,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (Platform.OS === "web") return { success: false, error: "Biometric not supported on web" };
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: "Authenticate to access ABFI System",
-        fallbackLabel: "Use Password",
-        disableDeviceFallback: false,
       });
 
       if (!result.success) return { success: false, error: "Biometric authentication failed" };
 
       const savedEmail = await AsyncStorage.getItem(STORAGE_KEYS.SAVED_EMAIL);
-      if (!savedEmail) return { success: false, error: "No saved credentials. Please login with password first." };
+      if (!savedEmail) return { success: false, error: "No saved credentials." };
 
-      const storedUsers = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
-      const allUsers: AppUser[] = storedUsers ? JSON.parse(storedUsers) : [DEFAULT_DIRECTOR];
-      const user = allUsers.find((u) => u.email.toLowerCase() === savedEmail.toLowerCase());
+      const { data: user, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("email", savedEmail.toLowerCase())
+        .single();
 
-      if (!user || !user.active) return { success: false, error: "Account not found or deactivated" };
+      if (error || !user || !user.active) return { success: false, error: "Account not found or deactivated" };
 
       await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
       setCurrentUser(user);
-      await logAuditAction("BIOMETRIC_LOGIN", `${user.name} (${user.role}) logged in via biometric`);
+      await logAuditAction("BIOMETRIC_LOGIN", `${user.name} logged in via biometric`);
       return { success: true };
     } catch (e) {
       return { success: false, error: "Biometric authentication error" };
@@ -155,113 +134,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    if (currentUser) {
-      await logAuditAction("LOGOUT", `${currentUser.name} logged out`);
-    }
+    if (currentUser) await logAuditAction("LOGOUT", `${currentUser.name} logged out`);
     await AsyncStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
     setCurrentUser(null);
   };
 
   const register = async (data: { name: string; email: string; password: string; role: UserRole }): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const storedUsers = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
-      const allUsers: AppUser[] = storedUsers ? JSON.parse(storedUsers) : [DEFAULT_DIRECTOR];
-      const exists = allUsers.find((u) => u.email.toLowerCase() === data.email.toLowerCase().trim());
-      if (exists) return { success: false, error: "An account with this email already exists" };
-      if (data.password.length < 6) return { success: false, error: "Password must be at least 6 characters" };
-      const newUser: AppUser = {
-        id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        name: data.name.trim(),
-        email: data.email.trim().toLowerCase(),
-        password: data.password,
-        role: data.role,
-        active: true,
-        createdBy: "self",
-        createdAt: new Date().toISOString(),
-      };
-      const updated = [...allUsers, newUser];
-      await AsyncStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updated));
-      setUsers(updated);
-      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(newUser));
-      await AsyncStorage.setItem(STORAGE_KEYS.SAVED_EMAIL, newUser.email);
-      setCurrentUser(newUser);
-      setHasSavedCredentials(true);
-      await logAuditAction("REGISTER", `${newUser.name} self-registered as ${newUser.role}`);
-      return { success: true };
-    } catch (e) {
-      return { success: false, error: "Registration failed. Please try again." };
-    }
+    const newUser = {
+      name: data.name.trim(),
+      email: data.email.trim().toLowerCase(),
+      password: data.password,
+      role: data.role,
+      active: true,
+      createdBy: "self",
+    };
+    const { data: created, error } = await supabase.from("users").insert([newUser]).select().single();
+    if (error) return { success: false, error: "Registration failed" };
+
+    await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(created));
+    await AsyncStorage.setItem(STORAGE_KEYS.SAVED_EMAIL, created.email);
+    setCurrentUser(created);
+    setHasSavedCredentials(true);
+    await fetchUsers();
+    return { success: true };
   };
 
   const addUser = async (data: Omit<AppUser, "id" | "createdAt">) => {
-    const storedUsers = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
-    const allUsers: AppUser[] = storedUsers ? JSON.parse(storedUsers) : [DEFAULT_DIRECTOR];
-    const newUser: AppUser = {
-      ...data,
-      id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      createdAt: new Date().toISOString(),
-    };
-    const updated = [...allUsers, newUser];
-    await AsyncStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updated));
-    setUsers(updated);
-    await logAuditAction("USER_ADDED", `Added user ${newUser.name} (${newUser.role})`);
+    await supabase.from("users").insert([data]);
+    await fetchUsers();
   };
 
   const removeUser = async (id: string) => {
-    const storedUsers = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
-    const allUsers: AppUser[] = storedUsers ? JSON.parse(storedUsers) : [DEFAULT_DIRECTOR];
-    const user = allUsers.find((u) => u.id === id);
-    const updated = allUsers.filter((u) => u.id !== id);
-    await AsyncStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updated));
-    setUsers(updated);
-    if (user) await logAuditAction("USER_REMOVED", `Removed user ${user.name} (${user.role})`);
+    await supabase.from("users").delete().eq("id", id);
+    await fetchUsers();
   };
 
   const updateUser = async (id: string, data: Partial<AppUser>) => {
-    const storedUsers = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
-    const allUsers: AppUser[] = storedUsers ? JSON.parse(storedUsers) : [DEFAULT_DIRECTOR];
-    const updated = allUsers.map((u) => (u.id === id ? { ...u, ...data } : u));
-    await AsyncStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updated));
-    setUsers(updated);
-    await logAuditAction("USER_UPDATED", `Updated user ${id}`);
+    await supabase.from("users").update(data).eq("id", id);
+    await fetchUsers();
   };
 
   const logAuditAction = async (action: string, details: string) => {
-    try {
-      const existing = await AsyncStorage.getItem(STORAGE_KEYS.AUDIT_LOGS);
-      const logs = existing ? JSON.parse(existing) : [];
-      logs.unshift({
-        id: `log_${Date.now()}`,
-        userId: currentUser?.id || "system",
-        userName: currentUser?.name || "System",
-        userRole: currentUser?.role || "system",
-        action,
-        details,
-        timestamp: new Date().toISOString(),
-      });
-      const trimmed = logs.slice(0, 500);
-      await AsyncStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(trimmed));
-    } catch {}
+    await supabase.from("audit_logs").insert([{
+      userId: currentUser?.id || "system",
+      userName: currentUser?.name || "System",
+      userRole: currentUser?.role || "system",
+      action,
+      details,
+    }]);
   };
 
-  const value = useMemo(
-    () => ({
-      currentUser,
-      users,
-      isLoading,
-      login,
-      register,
-      loginWithBiometric,
-      logout,
-      addUser,
-      removeUser,
-      updateUser,
-      biometricAvailable,
-      hasSavedCredentials,
-      logAuditAction,
-    }),
-    [currentUser, users, isLoading, biometricAvailable, hasSavedCredentials]
-  );
+  const value = useMemo(() => ({
+    currentUser, users, isLoading, login, register, loginWithBiometric, logout, addUser, removeUser, updateUser, biometricAvailable, hasSavedCredentials, logAuditAction,
+  }), [currentUser, users, isLoading, biometricAvailable, hasSavedCredentials]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
