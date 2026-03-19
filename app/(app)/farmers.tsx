@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
+import * as Linking from "expo-linking";
 import { useData, Farmer, Farm } from "@/context/DataContext";
 import { useAuth } from "@/context/AuthContext";
 import { COLORS } from "@/constants/colors";
@@ -110,6 +111,19 @@ export default function FarmersScreen() {
       Alert.alert("Error", "Could not capture location. Please ensure GPS is enabled.");
     } finally {
       setIsLocating(false);
+    }
+  };
+
+  const handleOpenMap = (lat: number, lng: number, label: string) => {
+    const scheme = Platform.select({ ios: 'maps:0,0?q=', android: 'geo:0,0?q=' });
+    const latLng = `${lat},${lng}`;
+    const url = Platform.select({
+      ios: `${scheme}${label}@${latLng}`,
+      android: `${scheme}${latLng}(${label})`
+    });
+
+    if (url) {
+      Linking.openURL(url);
     }
   };
 
@@ -290,7 +304,13 @@ export default function FarmersScreen() {
                         <Text style={styles.farmRowName}>{f.name}</Text>
                         <Text style={styles.farmRowSub}>{f.size ? `${f.size} ha` : "?"} • {f.cropType || f.type}</Text>
                         {f.latitude && f.longitude && (
-                          <Text style={styles.gpsText}>GPS: {f.latitude.toFixed(4)}, {f.longitude.toFixed(4)}</Text>
+                          <TouchableOpacity 
+                            style={styles.gpsBadge}
+                            onPress={() => handleOpenMap(f.latitude!, f.longitude!, f.name)}
+                          >
+                            <Ionicons name="map-outline" size={10} color={COLORS.info} />
+                            <Text style={styles.gpsText}>View on Map</Text>
+                          </TouchableOpacity>
                         )}
                       </View>
                       {canWrite && (
@@ -514,7 +534,18 @@ const styles = StyleSheet.create({
   },
   farmRowName: { fontSize: 13, fontWeight: "600", color: COLORS.text },
   farmRowSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
-  gpsText: { fontSize: 10, color: COLORS.info, marginTop: 2, fontFamily: "Inter_500Medium" },
+  gpsBadge: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    gap: 4, 
+    marginTop: 4,
+    backgroundColor: `${COLORS.info}15`,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    alignSelf: 'flex-start'
+  },
+  gpsText: { fontSize: 10, color: COLORS.info, fontFamily: "Inter_600SemiBold" },
 
   farmsChips: {
     flexDirection: "row", flexWrap: "wrap", gap: 8,
