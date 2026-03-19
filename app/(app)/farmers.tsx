@@ -278,7 +278,6 @@ export default function FarmersScreen() {
                   ))}
                 </View>
               )}
-
               {!isExpanded && ff.length > 0 && (
                 <View style={styles.farmsChips}>
                   {ff.map((f) => (

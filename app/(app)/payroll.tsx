@@ -18,7 +18,16 @@ import { useData, Payment } from "@/context/DataContext";
 import { useAuth } from "@/context/AuthContext";
 import { COLORS } from "@/constants/colors";
 import { LinearGradient } from "expo-linear-gradient";
+// example: src/screens/FarmScreen.js
+import { supabase } from '../lib/supabase';
 
+async function fetchFarms() {
+  const { data, error } = await supabase
+    .from('farms')
+    .select('*');
+  if (error) console.error(error);
+  else return data;
+}
 const STATUS_COLORS: Record<string, string> = {
   pending: COLORS.warning,
   approved: COLORS.info,

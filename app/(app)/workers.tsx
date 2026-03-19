@@ -17,7 +17,16 @@ import * as Haptics from "expo-haptics";
 import { useData, Worker } from "@/context/DataContext";
 import { useAuth } from "@/context/AuthContext";
 import { COLORS } from "@/constants/colors";
+// example: src/screens/FarmScreen.js
+import { supabase } from '../lib/supabase';
 
+async function fetchFarms() {
+  const { data, error } = await supabase
+    .from('farms')
+    .select('*');
+  if (error) console.error(error);
+  else return data;
+}
 const WAGE_TYPES = ["daily", "weekly", "monthly"] as const;
 
 export default function WorkersScreen() {

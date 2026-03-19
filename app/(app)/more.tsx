@@ -21,7 +21,7 @@ import { COLORS, ROLE_COLORS, ROLE_LABELS } from "@/constants/colors";
 import { RoleBadge } from "@/components/RoleBadge";
 import type { AppUser, UserRole } from "@/context/AuthContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
+// example: src/screens/FarmScreen.js
 type Section = "main" | "sales" | "stock" | "users" | "audit";
 
 const ROLES: UserRole[] = ["ceo", "manager", "accountant", "field_officer"];

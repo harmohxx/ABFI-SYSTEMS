@@ -8,7 +8,6 @@ import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from "@expo/vector-ico
 import React from "react";
 import { useAuth } from "@/context/AuthContext";
 import { COLORS } from "@/constants/colors";
-
 function NativeTabLayout() {
   const { currentUser } = useAuth();
   const role = currentUser?.role;
