@@ -10,10 +10,12 @@ import {
   ScrollView,
   Platform,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as Location from "expo-location";
 import { useData, Farmer, Farm } from "@/context/DataContext";
 import { useAuth } from "@/context/AuthContext";
 import { COLORS } from "@/constants/colors";
@@ -36,6 +38,7 @@ export default function FarmersScreen() {
   const [showFarmModal, setShowFarmModal] = useState(false);
   const [editingFarm, setEditingFarm] = useState<Farm | null>(null);
   const [expandedFarmer, setExpandedFarmer] = useState<string | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
 
   const [form, setForm] = useState({ name: "", phone: "", email: "", nationalId: "", location: "" });
   const [farmForm, setFarmForm] = useState({
@@ -85,6 +88,29 @@ export default function FarmersScreen() {
       longitude: farm.longitude?.toString() || "",
     });
     setShowFarmModal(true);
+  };
+
+  const handleCaptureGPS = async () => {
+    setIsLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert("Permission Denied", "Location permission is required to capture GPS coordinates.");
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      setFarmForm(prev => ({
+        ...prev,
+        latitude: location.coords.latitude.toString(),
+        longitude: location.coords.longitude.toString(),
+      }));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      Alert.alert("Error", "Could not capture location. Please ensure GPS is enabled.");
+    } finally {
+      setIsLocating(false);
+    }
   };
 
   const handleSaveFarmer = async () => {
@@ -263,6 +289,9 @@ export default function FarmersScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.farmRowName}>{f.name}</Text>
                         <Text style={styles.farmRowSub}>{f.size ? `${f.size} ha` : "?"} • {f.cropType || f.type}</Text>
+                        {f.latitude && f.longitude && (
+                          <Text style={styles.gpsText}>GPS: {f.latitude.toFixed(4)}, {f.longitude.toFixed(4)}</Text>
+                        )}
                       </View>
                       {canWrite && (
                         <View style={{ flexDirection: "row", gap: 8 }}>
@@ -343,8 +372,6 @@ export default function FarmersScreen() {
                 { key: "size", label: "Size (hectares)", placeholder: "5.2", keyboard: "decimal-pad" },
                 { key: "cropType", label: "Crop / Livestock Type", placeholder: "Maize, Dairy" },
                 { key: "address", label: "Address", placeholder: "Nakuru-Eldoret Rd, Rift Valley" },
-                { key: "latitude", label: "GPS Latitude", placeholder: "-0.3031", keyboard: "decimal-pad" },
-                { key: "longitude", label: "GPS Longitude", placeholder: "36.0800", keyboard: "decimal-pad" },
               ].map((field) => (
                 <View key={field.key} style={styles.formField}>
                   <Text style={styles.fieldLabel}>{field.label}</Text>
@@ -358,6 +385,45 @@ export default function FarmersScreen() {
                   />
                 </View>
               ))}
+
+              <View style={styles.formField}>
+                <Text style={styles.fieldLabel}>GPS Coordinates</Text>
+                <View style={styles.gpsRow}>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      style={[styles.fieldInput, { marginBottom: 8 }]}
+                      placeholder="Latitude"
+                      placeholderTextColor={COLORS.textMuted}
+                      value={farmForm.latitude}
+                      onChangeText={(v) => setFarmForm(p => ({ ...p, latitude: v }))}
+                      keyboardType="decimal-pad"
+                    />
+                    <TextInput
+                      style={styles.fieldInput}
+                      placeholder="Longitude"
+                      placeholderTextColor={COLORS.textMuted}
+                      value={farmForm.longitude}
+                      onChangeText={(v) => setFarmForm(p => ({ ...p, longitude: v }))}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                  <TouchableOpacity 
+                    style={styles.gpsBtn} 
+                    onPress={handleCaptureGPS}
+                    disabled={isLocating}
+                  >
+                    {isLocating ? (
+                      <ActivityIndicator color={COLORS.primary} />
+                    ) : (
+                      <>
+                        <Ionicons name="location" size={20} color={COLORS.primary} />
+                        <Text style={styles.gpsBtnText}>Capture</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+
               <View style={styles.formField}>
                 <Text style={styles.fieldLabel}>Farm Type</Text>
                 <View style={styles.typeSelector}>
@@ -448,6 +514,7 @@ const styles = StyleSheet.create({
   },
   farmRowName: { fontSize: 13, fontWeight: "600", color: COLORS.text },
   farmRowSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
+  gpsText: { fontSize: 10, color: COLORS.info, marginTop: 2, fontFamily: "Inter_500Medium" },
 
   farmsChips: {
     flexDirection: "row", flexWrap: "wrap", gap: 8,
@@ -479,6 +546,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 11,
     fontSize: 15, color: COLORS.text,
   },
+  gpsRow: { flexDirection: "row", gap: 12, alignItems: "center" },
+  gpsBtn: {
+    width: 80, height: 80, borderRadius: 12,
+    backgroundColor: `${COLORS.primary}15`,
+    borderWidth: 1, borderColor: `${COLORS.primary}30`,
+    alignItems: "center", justifyContent: "center", gap: 4,
+  },
+  gpsBtnText: { fontSize: 11, fontWeight: "700", color: COLORS.primary },
   typeSelector: { flexDirection: "row", gap: 8, marginTop: 4 },
   typeOption: {
     flex: 1, paddingVertical: 10, borderRadius: 10,
