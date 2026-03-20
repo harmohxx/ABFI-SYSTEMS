@@ -22,7 +22,7 @@ import { COLORS } from "@/constants/colors";
 
 export default function DashboardScreen() {
   const { currentUser, logout } = useAuth();
-  const { payments, sales, workers, tasks, expenses, auditLogs } = useData();
+  const { payments, sales, workers, tasks, expenses, auditLogs, products } = useData();
   const insets = useSafeAreaInsets();
   const top = Platform.OS === "web" ? 67 : insets.top;
   const bottom = Platform.OS === "web" ? 34 : insets.bottom;
@@ -34,6 +34,7 @@ export default function DashboardScreen() {
 
   const upcomingTasks = useMemo(() => tasks.filter(t => t.status !== "completed").slice(0, 3), [tasks]);
   const pendingPayments = useMemo(() => payments.filter(p => p.status === "pending").length, [payments]);
+  const lowStockProducts = useMemo(() => products.filter(p => p.currentStock <= p.minStock), [products]);
 
   const formatKES = (n: number) => {
     const absN = Math.abs(n);
@@ -42,6 +43,8 @@ export default function DashboardScreen() {
     if (absN >= 1_000) return `${sign}KES ${(absN / 1_000).toFixed(1)}K`;
     return `${sign}KES ${absN.toLocaleString()}`;
   };
+
+  const isCEO = currentUser?.role === "ceo" || currentUser?.role === "director";
 
   return (
     <View style={[styles.container, { backgroundColor: COLORS.bg }]}>
@@ -57,6 +60,20 @@ export default function DashboardScreen() {
               <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
             </TouchableOpacity>
           </View>
+
+          {isCEO && lowStockProducts.length > 0 && (
+            <TouchableOpacity 
+              style={styles.stockAlertBanner} 
+              onPress={() => router.push("/(app)/more")}
+            >
+              <MaterialCommunityIcons name="package-variant-closed-remove" size={20} color={COLORS.danger} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.stockAlertTitle}>Low Stock Alert</Text>
+                <Text style={styles.stockAlertSub}>{lowStockProducts.length} items need restocking</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={COLORS.danger} />
+            </TouchableOpacity>
+          )}
 
           <View style={styles.weatherCard}>
             <View style={styles.weatherInfo}>
@@ -131,6 +148,19 @@ const styles = StyleSheet.create({
   greeting: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary },
   userName: { fontFamily: "Inter_700Bold", fontSize: 22, color: COLORS.text, marginBottom: 4 },
   iconBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: COLORS.surface2, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: COLORS.border },
+  stockAlertBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: `${COLORS.danger}15`,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: `${COLORS.danger}30`,
+    marginBottom: 16,
+    gap: 12,
+  },
+  stockAlertTitle: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.danger },
+  stockAlertSub: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.danger, opacity: 0.8 },
   weatherCard: { backgroundColor: COLORS.surface, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: COLORS.border },
   weatherInfo: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
   tempText: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text },

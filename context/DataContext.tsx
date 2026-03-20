@@ -210,6 +210,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (product) {
       const newStock = data.type === "in" ? product.currentStock + data.quantity : Math.max(0, product.currentStock - data.quantity);
       await updateProduct(data.productId, { currentStock: newStock });
+      
+      // CEO Notification Logic for Low Stock
+      if (newStock <= product.minStock) {
+        await logAuditAction("LOW_STOCK_ALERT", `CRITICAL: ${product.name} stock is low (${newStock} ${product.unit} remaining)`);
+      }
     }
   };
 
