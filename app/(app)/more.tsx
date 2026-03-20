@@ -25,8 +25,10 @@ import { TasksSection } from "@/components/more/TasksSection";
 import { FarmActivitiesSection } from "@/components/more/FarmActivitiesSection";
 import { CropDoctorSection } from "@/components/more/CropDoctorSection";
 import { AttendanceSection } from "@/components/more/AttendanceSection";
+import { MarketPricesSection } from "@/components/more/MarketPricesSection";
+import { ReportsSection } from "@/components/more/ReportsSection";
 
-type Section = "main" | "sales" | "stock" | "users" | "audit" | "expenses" | "tasks" | "activities" | "doctor" | "attendance";
+type Section = "main" | "sales" | "stock" | "users" | "audit" | "expenses" | "tasks" | "activities" | "doctor" | "attendance" | "prices" | "reports";
 
 export default function MoreScreen() {
   const { currentUser, users, logout } = useAuth();
@@ -49,6 +51,8 @@ export default function MoreScreen() {
   if (section === "activities") return <FarmActivitiesSection onBack={() => setSection("main")} />;
   if (section === "doctor") return <CropDoctorSection onBack={() => setSection("main")} />;
   if (section === "attendance") return <AttendanceSection onBack={() => setSection("main")} />;
+  if (section === "prices") return <MarketPricesSection onBack={() => setSection("main")} />;
+  if (section === "reports") return <ReportsSection onBack={() => setSection("main")} />;
 
   return (
     <View style={styles.container}>
@@ -76,15 +80,19 @@ export default function MoreScreen() {
           <MenuItem icon={<Ionicons name="stats-chart" size={22} color={COLORS.success} />} label="Sales Monitoring" sub={`${sales.length} records`} accent={COLORS.success} onPress={() => setSection("sales")} />
           <MenuItem icon={<Ionicons name="receipt" size={22} color={COLORS.danger} />} label="Expense Tracking" sub={`KES ${expenses.reduce((a,b)=>a+b.amount,0).toLocaleString()}`} accent={COLORS.danger} onPress={() => setSection("expenses")} />
           <MenuItem icon={<MaterialCommunityIcons name="package-variant-closed" size={22} color={COLORS.warning} />} label="Stock & Inventory" sub={`${products.filter(p => p.currentStock <= p.minStock).length} low stock alerts`} accent={COLORS.warning} onPress={() => setSection("stock")} />
+          <MenuItem icon={<Ionicons name="pricetag" size={22} color={COLORS.gold} />} label="Market Prices" sub="Live commodity rates" accent={COLORS.gold} onPress={() => setSection("prices")} />
         </View>
 
-        {isDirectorOrCEO && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>ADMINISTRATION</Text>
-            {isDirector && <MenuItem icon={<Ionicons name="people" size={22} color={COLORS.gold} />} label="User Management" sub={`${users.length} system users`} accent={COLORS.gold} onPress={() => setSection("users")} />}
-            <MenuItem icon={<Ionicons name="shield-checkmark" size={22} color={COLORS.info} />} label="Audit Logs" sub={`${auditLogs.length} entries`} accent={COLORS.info} onPress={() => { refreshAuditLogs(); setSection("audit"); }} />
-          </View>
-        )}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>ADMINISTRATION</Text>
+          <MenuItem icon={<Ionicons name="document-text" size={22} color={COLORS.info} />} label="Reports & Analytics" sub="Export data & insights" accent={COLORS.info} onPress={() => setSection("reports")} />
+          {isDirectorOrCEO && (
+            <>
+              {isDirector && <MenuItem icon={<Ionicons name="people" size={22} color={COLORS.gold} />} label="User Management" sub={`${users.length} system users`} accent={COLORS.gold} onPress={() => setSection("users")} />}
+              <MenuItem icon={<Ionicons name="shield-checkmark" size={22} color={COLORS.info} />} label="Audit Logs" sub={`${auditLogs.length} entries`} accent={COLORS.info} onPress={() => { refreshAuditLogs(); setSection("audit"); }} />
+            </>
+          )}
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>ACCOUNT</Text>
