@@ -127,6 +127,14 @@ export default function FarmersScreen() {
     }
   };
 
+  const handleCall = (phone: string) => {
+    Linking.openURL(`tel:${phone}`);
+  };
+
+  const handleSMS = (phone: string) => {
+    Linking.openURL(`sms:${phone}`);
+  };
+
   const handleSaveFarmer = async () => {
     if (!form.name.trim() || !form.phone.trim()) {
       Alert.alert("Required", "Name and phone are required");
@@ -178,6 +186,12 @@ export default function FarmersScreen() {
     setFarmForm({ name: "", size: "", type: "crop", cropType: "", address: "", latitude: "", longitude: "" });
     setShowFarmModal(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const toggleFarmStatus = async (farm: Farm) => {
+    const newStatus = farm.status === "active" ? "inactive" : "active";
+    await updateFarm(farm.id, { status: newStatus });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   const handleDeleteFarmer = (farmer: Farmer) => {
@@ -284,6 +298,14 @@ export default function FarmersScreen() {
                   <View style={styles.detailRow}>
                     <Ionicons name="call-outline" size={13} color={COLORS.textMuted} />
                     <Text style={styles.detailText}>{item.phone}</Text>
+                    <View style={styles.commBtns}>
+                      <TouchableOpacity onPress={() => handleCall(item.phone)} style={styles.commBtn}>
+                        <Ionicons name="call" size={14} color={COLORS.primary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleSMS(item.phone)} style={styles.commBtn}>
+                        <Ionicons name="chatbubble-ellipses" size={14} color={COLORS.info} />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ) : null}
                 {item.location ? (
@@ -298,8 +320,8 @@ export default function FarmersScreen() {
                 <View style={styles.farmsSection}>
                   <Text style={styles.farmsSectionTitle}>Farms ({ff.length})</Text>
                   {ff.map((f) => (
-                    <View key={f.id} style={styles.farmRow}>
-                      <Ionicons name="leaf-outline" size={14} color={COLORS.primary} />
+                    <View key={f.id} style={[styles.farmRow, f.status === "inactive" && { opacity: 0.6 }]}>
+                      <Ionicons name="leaf-outline" size={14} color={f.status === "active" ? COLORS.primary : COLORS.textMuted} />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.farmRowName}>{f.name}</Text>
                         <Text style={styles.farmRowSub}>{f.size ? `${f.size} ha` : "?"} • {f.cropType || f.type}</Text>
@@ -313,16 +335,26 @@ export default function FarmersScreen() {
                           </TouchableOpacity>
                         )}
                       </View>
-                      {canWrite && (
-                        <View style={{ flexDirection: "row", gap: 8 }}>
-                          <TouchableOpacity onPress={() => openEditFarm(f)}>
-                            <Ionicons name="create-outline" size={17} color={COLORS.gold} />
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => handleDeleteFarm(f)}>
-                            <Ionicons name="trash-outline" size={16} color={COLORS.danger} />
-                          </TouchableOpacity>
-                        </View>
-                      )}
+                      <View style={styles.farmActions}>
+                        {canWrite && (
+                          <>
+                            <TouchableOpacity 
+                              style={[styles.statusToggle, { backgroundColor: f.status === "active" ? `${COLORS.success}15` : `${COLORS.danger}15` }]}
+                              onPress={() => toggleFarmStatus(f)}
+                            >
+                              <Text style={[styles.statusToggleText, { color: f.status === "active" ? COLORS.success : COLORS.danger }]}>
+                                {f.status === "active" ? "Active" : "Inactive"}
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => openEditFarm(f)}>
+                              <Ionicons name="create-outline" size={17} color={COLORS.gold} />
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleDeleteFarm(f)}>
+                              <Ionicons name="trash-outline" size={16} color={COLORS.danger} />
+                            </TouchableOpacity>
+                          </>
+                        )}
+                      </View>
                     </View>
                   ))}
                 </View>
@@ -330,9 +362,9 @@ export default function FarmersScreen() {
               {!isExpanded && ff.length > 0 && (
                 <View style={styles.farmsChips}>
                   {ff.map((f) => (
-                    <View key={f.id} style={styles.farmChip}>
-                      <Ionicons name="leaf-outline" size={11} color={COLORS.primary} />
-                      <Text style={styles.farmChipText}>{f.name} • {f.size || "?"} ha</Text>
+                    <View key={f.id} style={[styles.farmChip, f.status === "inactive" && { opacity: 0.5 }]}>
+                      <Ionicons name="leaf-outline" size={11} color={f.status === "active" ? COLORS.primary : COLORS.textMuted} />
+                      <Text style={[styles.farmChipText, f.status === "inactive" && { color: COLORS.textMuted }]}>{f.name} • {f.size || "?"} ha</Text>
                     </View>
                   ))}
                 </View>
@@ -522,6 +554,12 @@ const styles = StyleSheet.create({
   },
   detailRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   detailText: { fontSize: 12, color: COLORS.textSecondary },
+  commBtns: { flexDirection: "row", gap: 8, marginLeft: 4 },
+  commBtn: {
+    width: 24, height: 24, borderRadius: 6,
+    backgroundColor: COLORS.surface2, alignItems: "center", justifyContent: "center",
+    borderWidth: 1, borderColor: COLORS.border,
+  },
 
   farmsSection: {
     borderTopWidth: 1, borderTopColor: COLORS.border,
@@ -546,6 +584,12 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start'
   },
   gpsText: { fontSize: 10, color: COLORS.info, fontFamily: "Inter_600SemiBold" },
+  farmActions: { flexDirection: "row", alignItems: "center", gap: 10 },
+  statusToggle: {
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: 6,
+  },
+  statusToggleText: { fontSize: 10, fontWeight: "700" },
 
   farmsChips: {
     flexDirection: "row", flexWrap: "wrap", gap: 8,
