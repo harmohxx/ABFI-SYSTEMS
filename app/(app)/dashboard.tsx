@@ -20,7 +20,7 @@ import { COLORS, ROLE_LABELS } from "@/constants/colors";
 
 export default function DashboardScreen() {
   const { currentUser, logout } = useAuth();
-  const { farmers, farms, workers, payments, sales, products, auditLogs } = useData();
+  const { farmers, farms, workers, payments, sales, products, auditLogs, expenses } = useData();
   const insets = useSafeAreaInsets();
   const top = Platform.OS === "web" ? 67 : insets.top;
   const bottom = Platform.OS === "web" ? 34 : insets.bottom;
@@ -29,8 +29,11 @@ export default function DashboardScreen() {
     () => payments.filter((p) => p.status === "completed").reduce((a, b) => a + b.amount, 0),
     [payments]
   );
-  const pendingPayments = useMemo(() => payments.filter((p) => p.status === "pending").length, [payments]);
+  const totalExpenses = useMemo(() => expenses.reduce((a, b) => a + b.amount, 0), [expenses]);
   const totalRevenue = useMemo(() => sales.reduce((a, b) => a + b.totalRevenue, 0), [sales]);
+  const netProfit = totalRevenue - totalPayroll - totalExpenses;
+
+  const pendingPayments = useMemo(() => payments.filter((p) => p.status === "pending").length, [payments]);
   const lowStock = useMemo(() => products.filter((p) => p.currentStock <= p.minStock).length, [products]);
   const activeFarms = useMemo(() => farms.filter((f) => f.status === "active").length, [farms]);
   const activeWorkers = useMemo(() => workers.filter((w) => w.active).length, [workers]);
@@ -38,9 +41,11 @@ export default function DashboardScreen() {
   const recentLogs = auditLogs.slice(0, 5);
 
   const formatKES = (n: number) => {
-    if (n >= 1_000_000) return `KES ${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000) return `KES ${(n / 1_000).toFixed(1)}K`;
-    return `KES ${n.toLocaleString()}`;
+    const absN = Math.abs(n);
+    const sign = n < 0 ? "-" : "";
+    if (absN >= 1_000_000) return `${sign}KES ${(absN / 1_000_000).toFixed(1)}M`;
+    if (absN >= 1_000) return `${sign}KES ${(absN / 1_000).toFixed(1)}K`;
+    return `${sign}KES ${absN.toLocaleString()}`;
   };
 
   const handleLogout = async () => {
@@ -80,6 +85,18 @@ export default function DashboardScreen() {
             </View>
           </View>
 
+          <View style={styles.profitCard}>
+            <Text style={styles.profitLabel}>NET PROFIT</Text>
+            <Text style={[styles.profitValue, { color: netProfit >= 0 ? COLORS.success : COLORS.danger }]}>
+              {formatKES(netProfit)}
+            </Text>
+            <View style={styles.profitMeta}>
+              <Text style={styles.profitMetaText}>Revenue: {formatKES(totalRevenue)}</Text>
+              <View style={styles.profitMetaDivider} />
+              <Text style={styles.profitMetaText}>Costs: {formatKES(totalPayroll + totalExpenses)}</Text>
+            </View>
+          </View>
+
           {(isDirector || isCEO) && pendingPayments > 0 && (
             <TouchableOpacity
               style={styles.alertBanner}
@@ -90,51 +107,40 @@ export default function DashboardScreen() {
               <Ionicons name="chevron-forward" size={14} color={COLORS.warning} />
             </TouchableOpacity>
           )}
-
-          {lowStock > 0 && (
-            <TouchableOpacity
-              style={[styles.alertBanner, { borderColor: "rgba(255,92,92,0.3)", backgroundColor: "rgba(255,92,92,0.06)" }]}
-              onPress={() => router.push("/(app)/more")}
-            >
-              <Ionicons name="warning" size={16} color={COLORS.danger} />
-              <Text style={[styles.alertText, { color: COLORS.danger }]}>{lowStock} product{lowStock > 1 ? "s" : ""} below minimum stock</Text>
-              <Ionicons name="chevron-forward" size={14} color={COLORS.danger} />
-            </TouchableOpacity>
-          )}
         </LinearGradient>
 
         <View style={styles.statsSection}>
-          <Text style={styles.sectionLabel}>OVERVIEW</Text>
+          <Text style={styles.sectionLabel}>FINANCIAL OVERVIEW</Text>
           <View style={styles.statsRow}>
-            <StatCard
-              label="Farmers"
-              value={farmers.length}
-              icon={<MaterialCommunityIcons name="account-group" size={20} color={COLORS.primary} />}
-              accent={COLORS.primary}
-              subLabel={`${activeFarms} active farms`}
-            />
-            <StatCard
-              label="Workers"
-              value={activeWorkers}
-              icon={<FontAwesome5 name="hard-hat" size={18} color={COLORS.info} />}
-              accent={COLORS.info}
-              subLabel="active"
-            />
-          </View>
-          <View style={styles.statsRow}>
-            <StatCard
-              label="Total Payroll"
-              value={formatKES(totalPayroll)}
-              icon={<Ionicons name="cash" size={20} color={COLORS.gold} />}
-              accent={COLORS.gold}
-              subLabel="completed"
-            />
             <StatCard
               label="Revenue"
               value={formatKES(totalRevenue)}
               icon={<Ionicons name="trending-up" size={20} color={COLORS.success} />}
               accent={COLORS.success}
               subLabel="total sales"
+            />
+            <StatCard
+              label="Expenses"
+              value={formatKES(totalExpenses)}
+              icon={<Ionicons name="receipt" size={20} color={COLORS.danger} />}
+              accent={COLORS.danger}
+              subLabel="non-payroll"
+            />
+          </View>
+          <View style={styles.statsRow}>
+            <StatCard
+              label="Payroll"
+              value={formatKES(totalPayroll)}
+              icon={<Ionicons name="cash" size={20} color={COLORS.gold} />}
+              accent={COLORS.gold}
+              subLabel="completed"
+            />
+            <StatCard
+              label="Workers"
+              value={activeWorkers}
+              icon={<FontAwesome5 name="hard-hat" size={18} color={COLORS.info} />}
+              accent={COLORS.info}
+              subLabel="active staff"
             />
           </View>
         </View>
@@ -143,15 +149,15 @@ export default function DashboardScreen() {
           <Text style={styles.sectionLabel}>QUICK ACCESS</Text>
           <View style={styles.actionsGrid}>
             <QuickAction
-              icon={<MaterialCommunityIcons name="account-plus" size={24} color={COLORS.primary} />}
-              label="Add Farmer"
-              onPress={() => router.push("/(app)/farmers")}
-              accent={COLORS.primary}
+              icon={<Ionicons name="receipt" size={24} color={COLORS.danger} />}
+              label="Expenses"
+              onPress={() => router.push("/(app)/more")}
+              accent={COLORS.danger}
             />
             <QuickAction
-              icon={<FontAwesome5 name="hard-hat" size={22} color={COLORS.info} />}
-              label="Manage Workers"
-              onPress={() => router.push("/(app)/workers")}
+              icon={<Ionicons name="checkbox" size={24} color={COLORS.info} />}
+              label="Tasks"
+              onPress={() => router.push("/(app)/more")}
               accent={COLORS.info}
             />
             <QuickAction
@@ -166,20 +172,6 @@ export default function DashboardScreen() {
               onPress={() => router.push("/(app)/more")}
               accent={COLORS.success}
             />
-            <QuickAction
-              icon={<MaterialCommunityIcons name="package-variant" size={24} color={COLORS.warning} />}
-              label="Stock"
-              onPress={() => router.push("/(app)/more")}
-              accent={COLORS.warning}
-            />
-            {isDirector && (
-              <QuickAction
-                icon={<Ionicons name="people" size={24} color={COLORS.gold} />}
-                label="Manage Users"
-                onPress={() => router.push("/(app)/more")}
-                accent={COLORS.gold}
-              />
-            )}
           </View>
         </View>
 
@@ -250,6 +242,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+  profitCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginTop: 8,
+    alignItems: "center",
+  },
+  profitLabel: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textMuted, letterSpacing: 1.5, marginBottom: 8 },
+  profitValue: { fontFamily: "Inter_700Bold", fontSize: 32, marginBottom: 12 },
+  profitMeta: { flexDirection: "row", alignItems: "center", gap: 12 },
+  profitMetaText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textSecondary },
+  profitMetaDivider: { width: 1, height: 12, backgroundColor: COLORS.border },
   alertBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -259,7 +265,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
     borderColor: "rgba(245,166,35,0.3)",
-    marginTop: 8,
+    marginTop: 16,
   },
   alertText: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.warning },
   statsSection: { paddingHorizontal: 20, marginTop: 24 },
@@ -278,7 +284,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     alignItems: "center",
-    width: "30%",
+    width: "45%",
     flexGrow: 1,
     borderWidth: 1,
   },

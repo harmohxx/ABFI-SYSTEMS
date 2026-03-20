@@ -13,8 +13,11 @@ export interface StockTransaction { id: string; productId: string; productName: 
 export interface AuditLog { id: string; userId: string; userName: string; userRole: string; action: string; details: string; timestamp: string; }
 export interface Message { id: string; senderId: string; receiverId: string; content: string; isRead: boolean; createdAt: string; }
 
+export interface Expense { id: string; category: string; amount: number; farmId: string | null; farmName: string | null; description: string; date: string; recordedBy: string; createdBy: string; createdAt: string; }
+export interface Task { id: string; title: string; description: string; farmId: string; farmName: string; assignedToId: string | null; assignedToName: string | null; dueDate: string; status: "pending" | "in_progress" | "completed"; priority: "low" | "medium" | "high"; createdBy: string; createdAt: string; }
+
 interface DataContextValue {
-  farmers: Farmer[]; farms: Farm[]; workers: Worker[]; payments: Payment[]; shops: Shop[]; sales: Sale[]; products: Product[]; stockTransactions: StockTransaction[]; auditLogs: AuditLog[]; messages: Message[];
+  farmers: Farmer[]; farms: Farm[]; workers: Worker[]; payments: Payment[]; shops: Shop[]; sales: Sale[]; products: Product[]; stockTransactions: StockTransaction[]; auditLogs: AuditLog[]; messages: Message[]; expenses: Expense[]; tasks: Task[];
   addFarmer: (data: Omit<Farmer, "id" | "createdAt" | "createdBy">) => Promise<void>;
   updateFarmer: (id: string, data: Partial<Farmer>) => Promise<void>;
   deleteFarmer: (id: string) => Promise<void>;
@@ -36,6 +39,11 @@ interface DataContextValue {
   addStockTransaction: (data: Omit<StockTransaction, "id" | "createdAt" | "createdBy">) => Promise<void>;
   sendMessage: (receiverId: string, content: string) => Promise<void>;
   markMessageAsRead: (messageId: string) => Promise<void>;
+  addExpense: (data: Omit<Expense, "id" | "createdAt" | "createdBy">) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
+  addTask: (data: Omit<Task, "id" | "createdAt" | "createdBy">) => Promise<void>;
+  updateTask: (id: string, data: Partial<Task>) => Promise<void>;
+  deleteTask: (id: string) => Promise<void>;
   refreshAuditLogs: () => Promise<void>;
   lastSync: Date | null;
 }
@@ -54,10 +62,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [lastSync, setLastSync] = useState<Date | null>(null);
 
   const loadAll = async () => {
-    const [f, fa, w, p, sh, sa, pr, st, al, m] = await Promise.all([
+    const [f, fa, w, p, sh, sa, pr, st, al, m, ex, tk] = await Promise.all([
       supabase.from("farmers").select("*"),
       supabase.from("farms").select("*"),
       supabase.from("workers").select("*"),
@@ -68,6 +78,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       supabase.from("stock_transactions").select("*").order("createdAt", { ascending: false }),
       supabase.from("audit_logs").select("*").order("timestamp", { ascending: false }).limit(500),
       supabase.from("messages").select("*").or(`senderId.eq.${currentUser?.id},receiverId.eq.${currentUser?.id}`).order("createdAt", { ascending: true }),
+      supabase.from("expenses").select("*").order("date", { ascending: false }),
+      supabase.from("tasks").select("*").order("dueDate", { ascending: true }),
     ]);
     if (f.data) setFarmers(f.data);
     if (fa.data) setFarms(fa.data);
@@ -79,15 +91,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (st.data) setStockTransactions(st.data);
     if (al.data) setAuditLogs(al.data.map(l => ({ ...l, timestamp: l.timestamp || l.created_at })));
     if (m.data) setMessages(m.data);
+    if (ex.data) setExpenses(ex.data);
+    if (tk.data) setTasks(tk.data);
     setLastSync(new Date());
   };
 
   useEffect(() => {
     if (currentUser) {
       loadAll();
-      const channels = [
-        "farmers", "farms", "workers", "payments", "shops", "sales", "products", "stock_transactions", "audit_logs", "messages"
-      ].map(table => 
+      const tables = ["farmers", "farms", "workers", "payments", "shops", "sales", "products", "stock_transactions", "audit_logs", "messages", "expenses", "tasks"];
+      const channels = tables.map(table => 
         supabase
           .channel(`public:${table}`)
           .on('postgres_changes', { event: '*', schema: 'public', table }, () => {
@@ -152,17 +165,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const executeMpesaPayment = async (paymentId: string): Promise<{ success: boolean; error?: string }> => {
     const payment = payments.find(p => p.id === paymentId);
     if (!payment) return { success: false, error: "Payment not found" };
-
-    // Simulate M-Pesa B2C API Call
     await new Promise(resolve => setTimeout(resolve, 2000));
-
-    const { error } = await supabase
-      .from("payments")
-      .update({ status: "completed", approvedBy: currentUser?.name })
-      .eq("id", paymentId);
-
+    const { error } = await supabase.from("payments").update({ status: "completed", approvedBy: currentUser?.name }).eq("id", paymentId);
     if (error) return { success: false, error: "Failed to update payment status" };
-
     await logAuditAction("MPESA_DISBURSEMENT", `M-Pesa disbursement of KES ${payment.amount} to ${payment.workerName} completed by CEO`);
     return { success: true };
   };
@@ -200,16 +205,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const sendMessage = async (receiverId: string, content: string) => {
     if (!currentUser) return;
-    await supabase.from("messages").insert([{
-      senderId: currentUser.id,
-      receiverId,
-      content: content.trim(),
-      isRead: false,
-    }]);
+    await supabase.from("messages").insert([{ senderId: currentUser.id, receiverId, content: content.trim(), isRead: false }]);
   };
 
   const markMessageAsRead = async (messageId: string) => {
     await supabase.from("messages").update({ isRead: true }).eq("id", messageId);
+  };
+
+  const addExpense = async (data: Omit<Expense, "id" | "createdAt" | "createdBy">) => {
+    await supabase.from("expenses").insert([{ ...data, createdBy: currentUser?.id }]);
+    await logAuditAction("EXPENSE_RECORDED", `Expense of KES ${data.amount} for ${data.category} recorded`);
+  };
+  const deleteExpense = async (id: string) => {
+    await supabase.from("expenses").delete().eq("id", id);
+  };
+
+  const addTask = async (data: Omit<Task, "id" | "createdAt" | "createdBy">) => {
+    await supabase.from("tasks").insert([{ ...data, createdBy: currentUser?.id }]);
+    await logAuditAction("TASK_CREATED", `Task "${data.title}" created for ${data.farmName}`);
+  };
+  const updateTask = async (id: string, data: Partial<Task>) => {
+    await supabase.from("tasks").update(data).eq("id", id);
+  };
+  const deleteTask = async (id: string) => {
+    await supabase.from("tasks").delete().eq("id", id);
   };
 
   const refreshAuditLogs = async () => {
@@ -218,8 +237,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   const value = useMemo(() => ({
-    farmers: filteredFarmers, farms: filteredFarms, workers: filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, addFarmer, updateFarmer, deleteFarmer, addFarm, updateFarm, deleteFarm, addWorker, updateWorker, deleteWorker, addPayment, updatePayment, executeMpesaPayment, addShop, deleteShop, addSale, addProduct, updateProduct, deleteProduct, addStockTransaction, sendMessage, markMessageAsRead, refreshAuditLogs, lastSync,
-  }), [filteredFarmers, filteredFarms, filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, lastSync]);
+    farmers: filteredFarmers, farms: filteredFarms, workers: filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, expenses, tasks, addFarmer, updateFarmer, deleteFarmer, addFarm, updateFarm, deleteFarm, addWorker, updateWorker, deleteWorker, addPayment, updatePayment, executeMpesaPayment, addShop, deleteShop, addSale, addProduct, updateProduct, deleteProduct, addStockTransaction, sendMessage, markMessageAsRead, addExpense, deleteExpense, addTask, updateTask, deleteTask, refreshAuditLogs, lastSync,
+  }), [filteredFarmers, filteredFarms, filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, expenses, tasks, lastSync]);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }
