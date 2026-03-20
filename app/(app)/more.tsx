@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState } from "react";
 import {
   View,
@@ -20,12 +22,14 @@ import { UsersSection } from "@/components/more/UsersSection";
 import { AuditSection } from "@/components/more/AuditSection";
 import { ExpensesSection } from "@/components/more/ExpensesSection";
 import { TasksSection } from "@/components/more/TasksSection";
+import { FarmActivitiesSection } from "@/components/more/FarmActivitiesSection";
+import { CropDoctorSection } from "@/components/more/CropDoctorSection";
 
-type Section = "main" | "sales" | "stock" | "users" | "audit" | "expenses" | "tasks";
+type Section = "main" | "sales" | "stock" | "users" | "audit" | "expenses" | "tasks" | "activities" | "doctor";
 
 export default function MoreScreen() {
   const { currentUser, users, logout } = useAuth();
-  const { sales, products, auditLogs, refreshAuditLogs, expenses, tasks } = useData();
+  const { sales, products, auditLogs, refreshAuditLogs, expenses, tasks, farmActivities, cropAnalyses } = useData();
   const insets = useSafeAreaInsets();
   const top = Platform.OS === "web" ? 67 : insets.top;
   const bottom = Platform.OS === "web" ? 34 : insets.bottom;
@@ -41,6 +45,8 @@ export default function MoreScreen() {
   if (section === "audit") return <AuditSection onBack={() => setSection("main")} />;
   if (section === "expenses") return <ExpensesSection onBack={() => setSection("main")} />;
   if (section === "tasks") return <TasksSection onBack={() => setSection("main")} />;
+  if (section === "activities") return <FarmActivitiesSection onBack={() => setSection("main")} />;
+  if (section === "doctor") return <CropDoctorSection onBack={() => setSection("main")} />;
 
   return (
     <View style={styles.container}>
@@ -56,10 +62,16 @@ export default function MoreScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>OPERATIONS</Text>
+          <Text style={styles.sectionLabel}>FARM OPERATIONS</Text>
+          <MenuItem icon={<Ionicons name="calendar" size={22} color={COLORS.primary} />} label="Farm Activities" sub={`${farmActivities.length} records logged`} accent={COLORS.primary} onPress={() => setSection("activities")} />
+          <MenuItem icon={<MaterialCommunityIcons name="robot-outline" size={22} color={COLORS.info} />} label="Crop Doctor (AI)" sub={`${cropAnalyses.length} diagnoses`} accent={COLORS.info} onPress={() => setSection("doctor")} />
+          <MenuItem icon={<Ionicons name="checkbox" size={22} color={COLORS.success} />} label="Task Management" sub={`${tasks.filter(t=>t.status!=="completed").length} pending tasks`} accent={COLORS.success} onPress={() => setSection("tasks")} />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>FINANCE & SALES</Text>
           <MenuItem icon={<Ionicons name="stats-chart" size={22} color={COLORS.success} />} label="Sales Monitoring" sub={`${sales.length} records`} accent={COLORS.success} onPress={() => setSection("sales")} />
           <MenuItem icon={<Ionicons name="receipt" size={22} color={COLORS.danger} />} label="Expense Tracking" sub={`KES ${expenses.reduce((a,b)=>a+b.amount,0).toLocaleString()}`} accent={COLORS.danger} onPress={() => setSection("expenses")} />
-          <MenuItem icon={<Ionicons name="checkbox" size={22} color={COLORS.info} />} label="Task Management" sub={`${tasks.filter(t=>t.status!=="completed").length} pending tasks`} accent={COLORS.info} onPress={() => setSection("tasks")} />
           <MenuItem icon={<MaterialCommunityIcons name="package-variant-closed" size={22} color={COLORS.warning} />} label="Stock & Inventory" sub={`${products.filter(p => p.currentStock <= p.minStock).length} low stock alerts`} accent={COLORS.warning} onPress={() => setSection("stock")} />
         </View>
 

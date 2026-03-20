@@ -1,3 +1,5 @@
+"use client";
+
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from "react";
 import { supabase } from "@/app/lib/supabase";
 import { useAuth } from "./AuthContext";
@@ -12,12 +14,16 @@ export interface Product { id: string; name: string; unit: string; currentStock:
 export interface StockTransaction { id: string; productId: string; productName: string; type: "in" | "out"; quantity: number; shopId: string | null; notes: string; recordedBy: string; createdBy: string; createdAt: string; }
 export interface AuditLog { id: string; userId: string; userName: string; userRole: string; action: string; details: string; timestamp: string; }
 export interface Message { id: string; senderId: string; receiverId: string; content: string; isRead: boolean; createdAt: string; }
-
 export interface Expense { id: string; category: string; amount: number; farmId: string | null; farmName: string | null; description: string; date: string; recordedBy: string; createdBy: string; createdAt: string; }
 export interface Task { id: string; title: string; description: string; farmId: string; farmName: string; assignedToId: string | null; assignedToName: string | null; dueDate: string; status: "pending" | "in_progress" | "completed"; priority: "low" | "medium" | "high"; createdBy: string; createdAt: string; }
 
+// New Interfaces
+export interface FarmActivity { id: string; farmId: string; farmName: string; userId: string; userName: string; activityType: string; description: string; timestamp: string; }
+export interface CropAnalysis { id: string; farmId: string; farmName: string; cropType: string; issue: string; diagnosis: string; recommendation: string; confidence: number; createdAt: string; }
+
 interface DataContextValue {
   farmers: Farmer[]; farms: Farm[]; workers: Worker[]; payments: Payment[]; shops: Shop[]; sales: Sale[]; products: Product[]; stockTransactions: StockTransaction[]; auditLogs: AuditLog[]; messages: Message[]; expenses: Expense[]; tasks: Task[];
+  farmActivities: FarmActivity[]; cropAnalyses: CropAnalysis[];
   addFarmer: (data: Omit<Farmer, "id" | "createdAt" | "createdBy">) => Promise<void>;
   updateFarmer: (id: string, data: Partial<Farmer>) => Promise<void>;
   deleteFarmer: (id: string) => Promise<void>;
@@ -44,6 +50,8 @@ interface DataContextValue {
   addTask: (data: Omit<Task, "id" | "createdAt" | "createdBy">) => Promise<void>;
   updateTask: (id: string, data: Partial<Task>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
+  addFarmActivity: (data: Omit<FarmActivity, "id" | "timestamp" | "userId" | "userName">) => Promise<void>;
+  addCropAnalysis: (data: Omit<CropAnalysis, "id" | "createdAt">) => Promise<void>;
   refreshAuditLogs: () => Promise<void>;
   lastSync: Date | null;
 }
@@ -64,10 +72,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [farmActivities, setFarmActivities] = useState<FarmActivity[]>([]);
+  const [cropAnalyses, setCropAnalyses] = useState<CropAnalysis[]>([]);
   const [lastSync, setLastSync] = useState<Date | null>(null);
 
   const loadAll = async () => {
-    const [f, fa, w, p, sh, sa, pr, st, al, m, ex, tk] = await Promise.all([
+    const [f, fa, w, p, sh, sa, pr, st, al, m, ex, tk, act, ana] = await Promise.all([
       supabase.from("farmers").select("*"),
       supabase.from("farms").select("*"),
       supabase.from("workers").select("*"),
@@ -80,6 +90,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       supabase.from("messages").select("*").or(`senderId.eq.${currentUser?.id},receiverId.eq.${currentUser?.id}`).order("createdAt", { ascending: true }),
       supabase.from("expenses").select("*").order("date", { ascending: false }),
       supabase.from("tasks").select("*").order("dueDate", { ascending: true }),
+      supabase.from("farm_activities").select("*").order("timestamp", { ascending: false }),
+      supabase.from("crop_analyses").select("*").order("createdAt", { ascending: false }),
     ]);
     if (f.data) setFarmers(f.data);
     if (fa.data) setFarms(fa.data);
@@ -93,13 +105,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (m.data) setMessages(m.data);
     if (ex.data) setExpenses(ex.data);
     if (tk.data) setTasks(tk.data);
+    if (act.data) setFarmActivities(act.data);
+    if (ana.data) setCropAnalyses(ana.data);
     setLastSync(new Date());
   };
 
   useEffect(() => {
     if (currentUser) {
       loadAll();
-      const tables = ["farmers", "farms", "workers", "payments", "shops", "sales", "products", "stock_transactions", "audit_logs", "messages", "expenses", "tasks"];
+      const tables = ["farmers", "farms", "workers", "payments", "shops", "sales", "products", "stock_transactions", "audit_logs", "messages", "expenses", "tasks", "farm_activities", "crop_analyses"];
       const channels = tables.map(table => 
         supabase
           .channel(`public:${table}`)
@@ -114,9 +128,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [currentUser]);
 
-  // Role-based filtering logic
   const isRestricted = currentUser?.role === "field_officer";
-  
   const filteredFarmers = useMemo(() => isRestricted ? farmers.filter(f => f.createdBy === currentUser?.id) : farmers, [farmers, currentUser, isRestricted]);
   const filteredFarms = useMemo(() => isRestricted ? farms.filter(f => f.createdBy === currentUser?.id) : farms, [farms, currentUser, isRestricted]);
   const filteredWorkers = useMemo(() => isRestricted ? workers.filter(w => w.createdBy === currentUser?.id) : workers, [workers, currentUser, isRestricted]);
@@ -231,14 +243,29 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await supabase.from("tasks").delete().eq("id", id);
   };
 
+  const addFarmActivity = async (data: Omit<FarmActivity, "id" | "timestamp" | "userId" | "userName">) => {
+    await supabase.from("farm_activities").insert([{
+      ...data,
+      userId: currentUser?.id,
+      userName: currentUser?.name,
+      timestamp: new Date().toISOString()
+    }]);
+    await logAuditAction("FARM_ACTIVITY", `${data.activityType} recorded for ${data.farmName}`);
+  };
+
+  const addCropAnalysis = async (data: Omit<CropAnalysis, "id" | "createdAt">) => {
+    await supabase.from("crop_analyses").insert([{ ...data, createdAt: new Date().toISOString() }]);
+    await logAuditAction("CROP_ANALYSIS", `AI Analysis performed for ${data.farmName}`);
+  };
+
   const refreshAuditLogs = async () => {
     const { data } = await supabase.from("audit_logs").select("*").order("timestamp", { ascending: false }).limit(500);
     if (data) setAuditLogs(data);
   };
 
   const value = useMemo(() => ({
-    farmers: filteredFarmers, farms: filteredFarms, workers: filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, expenses, tasks, addFarmer, updateFarmer, deleteFarmer, addFarm, updateFarm, deleteFarm, addWorker, updateWorker, deleteWorker, addPayment, updatePayment, executeMpesaPayment, addShop, deleteShop, addSale, addProduct, updateProduct, deleteProduct, addStockTransaction, sendMessage, markMessageAsRead, addExpense, deleteExpense, addTask, updateTask, deleteTask, refreshAuditLogs, lastSync,
-  }), [filteredFarmers, filteredFarms, filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, expenses, tasks, lastSync]);
+    farmers: filteredFarmers, farms: filteredFarms, workers: filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, expenses, tasks, farmActivities, cropAnalyses, addFarmer, updateFarmer, deleteFarmer, addFarm, updateFarm, deleteFarm, addWorker, updateWorker, deleteWorker, addPayment, updatePayment, executeMpesaPayment, addShop, deleteShop, addSale, addProduct, updateProduct, deleteProduct, addStockTransaction, sendMessage, markMessageAsRead, addExpense, deleteExpense, addTask, updateTask, deleteTask, addFarmActivity, addCropAnalysis, refreshAuditLogs, lastSync,
+  }), [filteredFarmers, filteredFarms, filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, expenses, tasks, farmActivities, cropAnalyses, lastSync]);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

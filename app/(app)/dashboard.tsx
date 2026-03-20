@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useMemo } from "react";
 import {
   View,
@@ -34,8 +36,6 @@ export default function DashboardScreen() {
   const netProfit = totalRevenue - totalPayroll - totalExpenses;
 
   const pendingPayments = useMemo(() => payments.filter((p) => p.status === "pending").length, [payments]);
-  const lowStock = useMemo(() => products.filter((p) => p.currentStock <= p.minStock).length, [products]);
-  const activeFarms = useMemo(() => farms.filter((f) => f.status === "active").length, [farms]);
   const activeWorkers = useMemo(() => workers.filter((w) => w.active).length, [workers]);
 
   const recentLogs = auditLogs.slice(0, 5);
@@ -149,16 +149,16 @@ export default function DashboardScreen() {
           <Text style={styles.sectionLabel}>QUICK ACCESS</Text>
           <View style={styles.actionsGrid}>
             <QuickAction
-              icon={<Ionicons name="receipt" size={24} color={COLORS.danger} />}
-              label="Expenses"
-              onPress={() => router.push("/(app)/more")}
-              accent={COLORS.danger}
-            />
-            <QuickAction
-              icon={<Ionicons name="checkbox" size={24} color={COLORS.info} />}
-              label="Tasks"
+              icon={<MaterialCommunityIcons name="robot-outline" size={24} color={COLORS.info} />}
+              label="Crop Doctor"
               onPress={() => router.push("/(app)/more")}
               accent={COLORS.info}
+            />
+            <QuickAction
+              icon={<Ionicons name="calendar" size={24} color={COLORS.primary} />}
+              label="Activities"
+              onPress={() => router.push("/(app)/more")}
+              accent={COLORS.primary}
             />
             <QuickAction
               icon={<Ionicons name="cash-outline" size={24} color={COLORS.gold} />}
