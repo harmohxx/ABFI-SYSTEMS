@@ -2,41 +2,44 @@ import React, { createContext, useContext, useState, useEffect, useMemo, ReactNo
 import { supabase } from "@/app/lib/supabase";
 import { useAuth } from "./AuthContext";
 
-export interface Farmer { id: string; farmerId: string; name: string; phone: string; email: string; nationalId: string; location: string; createdAt: string; }
-export interface Farm { id: string; farmerId: string; farmerName: string; name: string; size: string; type: "crop" | "livestock" | "mixed"; cropType: string; latitude: number | null; longitude: number | null; address: string; status: "active" | "inactive"; createdAt: string; }
-export interface Worker { id: string; farmId: string; farmName: string; name: string; phone: string; role: string; wageType: "daily" | "weekly" | "monthly"; wageAmount: number; active: boolean; createdAt: string; }
+export interface Farmer { id: string; farmerId: string; name: string; phone: string; email: string; nationalId: string; location: string; createdBy: string; createdAt: string; }
+export interface Farm { id: string; farmerId: string; farmerName: string; name: string; size: string; type: "crop" | "livestock" | "mixed"; cropType: string; latitude: number | null; longitude: number | null; address: string; status: "active" | "inactive"; createdBy: string; createdAt: string; }
+export interface Worker { id: string; farmId: string; farmName: string; name: string; phone: string; role: string; wageType: "daily" | "weekly" | "monthly"; wageAmount: number; active: boolean; createdBy: string; createdAt: string; }
 export interface Payment { id: string; workerId: string; workerName: string; farmId: string; farmName: string; amount: number; method: "mpesa" | "bank"; status: "pending" | "approved" | "rejected" | "completed"; initiatedBy: string; approvedBy: string | null; reference: string; notes: string; createdAt: string; updatedAt: string; }
-export interface Shop { id: string; name: string; location: string; managerId: string; active: boolean; createdAt: string; }
-export interface Sale { id: string; shopId: string; shopName: string; products: Array<{ name: string; quantity: number; unitPrice: number }>; totalRevenue: number; recordedBy: string; date: string; createdAt: string; }
-export interface Product { id: string; name: string; unit: string; currentStock: number; minStock: number; location: "warehouse" | string; createdAt: string; }
-export interface StockTransaction { id: string; productId: string; productName: string; type: "in" | "out"; quantity: number; shopId: string | null; notes: string; recordedBy: string; createdAt: string; }
+export interface Shop { id: string; name: string; location: string; managerId: string; active: boolean; createdBy: string; createdAt: string; }
+export interface Sale { id: string; shopId: string; shopName: string; products: Array<{ name: string; quantity: number; unitPrice: number }>; totalRevenue: number; recordedBy: string; date: string; createdBy: string; createdAt: string; }
+export interface Product { id: string; name: string; unit: string; currentStock: number; minStock: number; location: "warehouse" | string; createdBy: string; createdAt: string; }
+export interface StockTransaction { id: string; productId: string; productName: string; type: "in" | "out"; quantity: number; shopId: string | null; notes: string; recordedBy: string; createdBy: string; createdAt: string; }
 export interface AuditLog { id: string; userId: string; userName: string; userRole: string; action: string; details: string; timestamp: string; }
 
 interface DataContextValue {
   farmers: Farmer[]; farms: Farm[]; workers: Worker[]; payments: Payment[]; shops: Shop[]; sales: Sale[]; products: Product[]; stockTransactions: StockTransaction[]; auditLogs: AuditLog[];
-  addFarmer: (data: Omit<Farmer, "id" | "createdAt">) => Promise<void>;
+  addFarmer: (data: Omit<Farmer, "id" | "createdAt" | "createdBy">) => Promise<void>;
   updateFarmer: (id: string, data: Partial<Farmer>) => Promise<void>;
   deleteFarmer: (id: string) => Promise<void>;
-  addFarm: (data: Omit<Farm, "id" | "createdAt">) => Promise<void>;
+  addFarm: (data: Omit<Farm, "id" | "createdAt" | "createdBy">) => Promise<void>;
   updateFarm: (id: string, data: Partial<Farm>) => Promise<void>;
   deleteFarm: (id: string) => Promise<void>;
-  addWorker: (data: Omit<Worker, "id" | "createdAt">) => Promise<void>;
+  addWorker: (data: Omit<Worker, "id" | "createdAt" | "createdBy">) => Promise<void>;
   updateWorker: (id: string, data: Partial<Worker>) => Promise<void>;
   deleteWorker: (id: string) => Promise<void>;
   addPayment: (data: Omit<Payment, "id" | "createdAt" | "updatedAt">) => Promise<void>;
   updatePayment: (id: string, data: Partial<Payment>) => Promise<void>;
-  addShop: (data: Omit<Shop, "id" | "createdAt">) => Promise<void>;
-  addSale: (data: Omit<Sale, "id" | "createdAt">) => Promise<void>;
-  addProduct: (data: Omit<Product, "id" | "createdAt">) => Promise<void>;
+  addShop: (data: Omit<Shop, "id" | "createdAt" | "createdBy">) => Promise<void>;
+  deleteShop: (id: string) => Promise<void>;
+  addSale: (data: Omit<Sale, "id" | "createdAt" | "createdBy">) => Promise<void>;
+  addProduct: (data: Omit<Product, "id" | "createdAt" | "createdBy">) => Promise<void>;
   updateProduct: (id: string, data: Partial<Product>) => Promise<void>;
-  addStockTransaction: (data: Omit<StockTransaction, "id" | "createdAt">) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
+  addStockTransaction: (data: Omit<StockTransaction, "id" | "createdAt" | "createdBy">) => Promise<void>;
   refreshAuditLogs: () => Promise<void>;
+  lastSync: Date | null;
 }
 
 const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { logAuditAction } = useAuth();
+  const { currentUser, logAuditAction } = useAuth();
   const [farmers, setFarmers] = useState<Farmer[]>([]);
   const [farms, setFarms] = useState<Farm[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -46,6 +49,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [lastSync, setLastSync] = useState<Date | null>(null);
 
   const loadAll = async () => {
     const [f, fa, w, p, sh, sa, pr, st, al] = await Promise.all([
@@ -68,30 +72,37 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (pr.data) setProducts(pr.data);
     if (st.data) setStockTransactions(st.data);
     if (al.data) setAuditLogs(al.data.map(l => ({ ...l, timestamp: l.timestamp || l.created_at })));
+    setLastSync(new Date());
   };
 
   useEffect(() => {
-    loadAll();
+    if (currentUser) {
+      loadAll();
+      const channels = [
+        "farmers", "farms", "workers", "payments", "shops", "sales", "products", "stock_transactions", "audit_logs"
+      ].map(table => 
+        supabase
+          .channel(`public:${table}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table }, () => {
+            loadAll();
+          })
+          .subscribe()
+      );
+      return () => {
+        channels.forEach(channel => supabase.removeChannel(channel));
+      };
+    }
+  }, [currentUser]);
 
-    // Set up Realtime subscriptions for all tables
-    const channels = [
-      "farmers", "farms", "workers", "payments", "shops", "sales", "products", "stock_transactions", "audit_logs"
-    ].map(table => 
-      supabase
-        .channel(`public:${table}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table }, () => {
-          loadAll(); // Reload all data when any change occurs
-        })
-        .subscribe()
-    );
+  // Role-based filtering logic
+  const isRestricted = currentUser?.role === "field_officer";
+  
+  const filteredFarmers = useMemo(() => isRestricted ? farmers.filter(f => f.createdBy === currentUser?.id) : farmers, [farmers, currentUser, isRestricted]);
+  const filteredFarms = useMemo(() => isRestricted ? farms.filter(f => f.createdBy === currentUser?.id) : farms, [farms, currentUser, isRestricted]);
+  const filteredWorkers = useMemo(() => isRestricted ? workers.filter(w => w.createdBy === currentUser?.id) : workers, [workers, currentUser, isRestricted]);
 
-    return () => {
-      channels.forEach(channel => supabase.removeChannel(channel));
-    };
-  }, []);
-
-  const addFarmer = async (data: Omit<Farmer, "id" | "createdAt">) => {
-    await supabase.from("farmers").insert([data]);
+  const addFarmer = async (data: Omit<Farmer, "id" | "createdAt" | "createdBy">) => {
+    await supabase.from("farmers").insert([{ ...data, createdBy: currentUser?.id }]);
     await logAuditAction("FARMER_ADDED", `Added farmer ${data.name}`);
   };
   const updateFarmer = async (id: string, data: Partial<Farmer>) => {
@@ -101,8 +112,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await supabase.from("farmers").delete().eq("id", id);
   };
 
-  const addFarm = async (data: Omit<Farm, "id" | "createdAt">) => {
-    await supabase.from("farms").insert([data]);
+  const addFarm = async (data: Omit<Farm, "id" | "createdAt" | "createdBy">) => {
+    await supabase.from("farms").insert([{ ...data, createdBy: currentUser?.id }]);
     await logAuditAction("FARM_ADDED", `Added farm ${data.name}`);
   };
   const updateFarm = async (id: string, data: Partial<Farm>) => {
@@ -112,8 +123,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await supabase.from("farms").delete().eq("id", id);
   };
 
-  const addWorker = async (data: Omit<Worker, "id" | "createdAt">) => {
-    await supabase.from("workers").insert([data]);
+  const addWorker = async (data: Omit<Worker, "id" | "createdAt" | "createdBy">) => {
+    await supabase.from("workers").insert([{ ...data, createdBy: currentUser?.id }]);
     await logAuditAction("WORKER_ADDED", `Added worker ${data.name}`);
   };
   const updateWorker = async (id: string, data: Partial<Worker>) => {
@@ -131,24 +142,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await supabase.from("payments").update(data).eq("id", id);
   };
 
-  const addShop = async (data: Omit<Shop, "id" | "createdAt">) => {
-    await supabase.from("shops").insert([data]);
+  const addShop = async (data: Omit<Shop, "id" | "createdAt" | "createdBy">) => {
+    await supabase.from("shops").insert([{ ...data, createdBy: currentUser?.id }]);
+  };
+  const deleteShop = async (id: string) => {
+    await supabase.from("shops").delete().eq("id", id);
   };
 
-  const addSale = async (data: Omit<Sale, "id" | "createdAt">) => {
-    await supabase.from("sales").insert([data]);
+  const addSale = async (data: Omit<Sale, "id" | "createdAt" | "createdBy">) => {
+    await supabase.from("sales").insert([{ ...data, createdBy: currentUser?.id }]);
     await logAuditAction("SALE_RECORDED", `Sale of KES ${data.totalRevenue} recorded`);
   };
 
-  const addProduct = async (data: Omit<Product, "id" | "createdAt">) => {
-    await supabase.from("products").insert([data]);
+  const addProduct = async (data: Omit<Product, "id" | "createdAt" | "createdBy">) => {
+    await supabase.from("products").insert([{ ...data, createdBy: currentUser?.id }]);
   };
   const updateProduct = async (id: string, data: Partial<Product>) => {
     await supabase.from("products").update(data).eq("id", id);
   };
+  const deleteProduct = async (id: string) => {
+    await supabase.from("products").delete().eq("id", id);
+  };
 
-  const addStockTransaction = async (data: Omit<StockTransaction, "id" | "createdAt">) => {
-    await supabase.from("stock_transactions").insert([data]);
+  const addStockTransaction = async (data: Omit<StockTransaction, "id" | "createdAt" | "createdBy">) => {
+    await supabase.from("stock_transactions").insert([{ ...data, createdBy: currentUser?.id }]);
     const product = products.find((p) => p.id === data.productId);
     if (product) {
       const newStock = data.type === "in" ? product.currentStock + data.quantity : Math.max(0, product.currentStock - data.quantity);
@@ -162,8 +179,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   const value = useMemo(() => ({
-    farmers, farms, workers, payments, shops, sales, products, stockTransactions, auditLogs, addFarmer, updateFarmer, deleteFarmer, addFarm, updateFarm, deleteFarm, addWorker, updateWorker, deleteWorker, addPayment, updatePayment, addShop, addSale, addProduct, updateProduct, addStockTransaction, refreshAuditLogs,
-  }), [farmers, farms, workers, payments, shops, sales, products, stockTransactions, auditLogs]);
+    farmers: filteredFarmers, farms: filteredFarms, workers: filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, addFarmer, updateFarmer, deleteFarmer, addFarm, updateFarm, deleteFarm, addWorker, updateWorker, deleteWorker, addPayment, updatePayment, addShop, deleteShop, addSale, addProduct, updateProduct, deleteProduct, addStockTransaction, refreshAuditLogs, lastSync,
+  }), [filteredFarmers, filteredFarms, filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, lastSync]);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }
