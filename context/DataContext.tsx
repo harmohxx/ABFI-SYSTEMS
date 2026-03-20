@@ -11,9 +11,10 @@ export interface Sale { id: string; shopId: string; shopName: string; products: 
 export interface Product { id: string; name: string; unit: string; currentStock: number; minStock: number; location: "warehouse" | string; createdBy: string; createdAt: string; }
 export interface StockTransaction { id: string; productId: string; productName: string; type: "in" | "out"; quantity: number; shopId: string | null; notes: string; recordedBy: string; createdBy: string; createdAt: string; }
 export interface AuditLog { id: string; userId: string; userName: string; userRole: string; action: string; details: string; timestamp: string; }
+export interface Message { id: string; senderId: string; receiverId: string; content: string; isRead: boolean; createdAt: string; }
 
 interface DataContextValue {
-  farmers: Farmer[]; farms: Farm[]; workers: Worker[]; payments: Payment[]; shops: Shop[]; sales: Sale[]; products: Product[]; stockTransactions: StockTransaction[]; auditLogs: AuditLog[];
+  farmers: Farmer[]; farms: Farm[]; workers: Worker[]; payments: Payment[]; shops: Shop[]; sales: Sale[]; products: Product[]; stockTransactions: StockTransaction[]; auditLogs: AuditLog[]; messages: Message[];
   addFarmer: (data: Omit<Farmer, "id" | "createdAt" | "createdBy">) => Promise<void>;
   updateFarmer: (id: string, data: Partial<Farmer>) => Promise<void>;
   deleteFarmer: (id: string) => Promise<void>;
@@ -32,6 +33,8 @@ interface DataContextValue {
   updateProduct: (id: string, data: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
   addStockTransaction: (data: Omit<StockTransaction, "id" | "createdAt" | "createdBy">) => Promise<void>;
+  sendMessage: (receiverId: string, content: string) => Promise<void>;
+  markMessageAsRead: (messageId: string) => Promise<void>;
   refreshAuditLogs: () => Promise<void>;
   lastSync: Date | null;
 }
@@ -49,10 +52,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [lastSync, setLastSync] = useState<Date | null>(null);
 
   const loadAll = async () => {
-    const [f, fa, w, p, sh, sa, pr, st, al] = await Promise.all([
+    const [f, fa, w, p, sh, sa, pr, st, al, m] = await Promise.all([
       supabase.from("farmers").select("*"),
       supabase.from("farms").select("*"),
       supabase.from("workers").select("*"),
@@ -62,6 +66,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       supabase.from("products").select("*"),
       supabase.from("stock_transactions").select("*").order("createdAt", { ascending: false }),
       supabase.from("audit_logs").select("*").order("timestamp", { ascending: false }).limit(500),
+      supabase.from("messages").select("*").or(`senderId.eq.${currentUser?.id},receiverId.eq.${currentUser?.id}`).order("createdAt", { ascending: true }),
     ]);
     if (f.data) setFarmers(f.data);
     if (fa.data) setFarms(fa.data);
@@ -72,6 +77,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (pr.data) setProducts(pr.data);
     if (st.data) setStockTransactions(st.data);
     if (al.data) setAuditLogs(al.data.map(l => ({ ...l, timestamp: l.timestamp || l.created_at })));
+    if (m.data) setMessages(m.data);
     setLastSync(new Date());
   };
 
@@ -79,7 +85,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (currentUser) {
       loadAll();
       const channels = [
-        "farmers", "farms", "workers", "payments", "shops", "sales", "products", "stock_transactions", "audit_logs"
+        "farmers", "farms", "workers", "payments", "shops", "sales", "products", "stock_transactions", "audit_logs", "messages"
       ].map(table => 
         supabase
           .channel(`public:${table}`)
@@ -173,14 +179,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const sendMessage = async (receiverId: string, content: string) => {
+    if (!currentUser) return;
+    await supabase.from("messages").insert([{
+      senderId: currentUser.id,
+      receiverId,
+      content: content.trim(),
+      isRead: false,
+    }]);
+  };
+
+  const markMessageAsRead = async (messageId: string) => {
+    await supabase.from("messages").update({ isRead: true }).eq("id", messageId);
+  };
+
   const refreshAuditLogs = async () => {
     const { data } = await supabase.from("audit_logs").select("*").order("timestamp", { ascending: false }).limit(500);
     if (data) setAuditLogs(data);
   };
 
   const value = useMemo(() => ({
-    farmers: filteredFarmers, farms: filteredFarms, workers: filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, addFarmer, updateFarmer, deleteFarmer, addFarm, updateFarm, deleteFarm, addWorker, updateWorker, deleteWorker, addPayment, updatePayment, addShop, deleteShop, addSale, addProduct, updateProduct, deleteProduct, addStockTransaction, refreshAuditLogs, lastSync,
-  }), [filteredFarmers, filteredFarms, filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, lastSync]);
+    farmers: filteredFarmers, farms: filteredFarms, workers: filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, addFarmer, updateFarmer, deleteFarmer, addFarm, updateFarm, deleteFarm, addWorker, updateWorker, deleteWorker, addPayment, updatePayment, addShop, deleteShop, addSale, addProduct, updateProduct, deleteProduct, addStockTransaction, sendMessage, markMessageAsRead, refreshAuditLogs, lastSync,
+  }), [filteredFarmers, filteredFarms, filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, lastSync]);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }
