@@ -16,8 +16,6 @@ export interface AuditLog { id: string; userId: string; userName: string; userRo
 export interface Message { id: string; senderId: string; receiverId: string; content: string; isRead: boolean; createdAt: string; }
 export interface Expense { id: string; category: string; amount: number; farmId: string | null; farmName: string | null; description: string; date: string; recordedBy: string; createdBy: string; createdAt: string; }
 export interface Task { id: string; title: string; description: string; farmId: string; farmName: string; assignedToId: string | null; assignedToName: string | null; dueDate: string; status: "pending" | "in_progress" | "completed"; priority: "low" | "medium" | "high"; createdBy: string; createdAt: string; }
-
-// New Interfaces
 export interface FarmActivity { id: string; farmId: string; farmName: string; userId: string; userName: string; activityType: string; description: string; timestamp: string; }
 export interface CropAnalysis { id: string; farmId: string; farmName: string; cropType: string; issue: string; diagnosis: string; recommendation: string; confidence: number; createdAt: string; }
 
