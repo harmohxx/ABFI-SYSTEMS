@@ -9,9 +9,10 @@ import {
   ScrollView,
   Platform,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useData, Payment } from "@/context/DataContext";
 import { useAuth } from "@/context/AuthContext";
@@ -29,26 +30,27 @@ function genRef() {
 }
 
 export default function PayrollScreen() {
-  const { workers, payments, addPayment, updatePayment } = useData();
+  const { workers, payments, addPayment, updatePayment, executeMpesaPayment } = useData();
   const { currentUser } = useAuth();
   const insets = useSafeAreaInsets();
   const top = Platform.OS === "web" ? 67 : insets.top;
   const bottom = Platform.OS === "web" ? 34 : insets.bottom;
 
   const [showModal, setShowModal] = useState(false);
-  const [filter, setFilter] = useState<"all" | "pending" | "completed">("all");
+  const [filter, setFilter] = useState<"all" | "pending" | "approved" | "completed">("all");
+  const [isProcessing, setIsProcessing] = useState<string | null>(null);
   const [form, setForm] = useState({
     workerId: "", amount: "", method: "mpesa" as Payment["method"], notes: "",
   });
 
-  const isDirectorOrCEO = currentUser?.role === "director" || currentUser?.role === "ceo";
+  const isCEO = currentUser?.role === "ceo";
+  const isDirector = currentUser?.role === "director";
   const canInitiate = ["director", "manager", "accountant"].includes(currentUser?.role || "");
-  const canApprove = isDirectorOrCEO;
+  const canApprove = isDirector || isCEO;
 
   const filtered = useMemo(() => {
     if (filter === "all") return payments;
-    if (filter === "pending") return payments.filter((p) => p.status === "pending");
-    return payments.filter((p) => p.status === "completed");
+    return payments.filter((p) => p.status === filter);
   }, [payments, filter]);
 
   const totalPending = useMemo(
@@ -92,13 +94,43 @@ export default function PayrollScreen() {
         text: "Approve",
         onPress: async () => {
           await updatePayment(payment.id, {
-            status: "completed",
+            status: "approved",
             approvedBy: currentUser?.name || "",
           });
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         },
       },
     ]);
+  };
+
+  const handlePayNow = (payment: Payment) => {
+    if (!isCEO) {
+      Alert.alert("Access Denied", "Only the CEO can execute M-Pesa disbursements.");
+      return;
+    }
+
+    Alert.alert(
+      "Confirm M-Pesa Disbursement",
+      `Disburse KES ${payment.amount.toLocaleString()} to ${payment.workerName} via M-Pesa?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Pay Now",
+          onPress: async () => {
+            setIsProcessing(payment.id);
+            const result = await executeMpesaPayment(payment.id);
+            setIsProcessing(null);
+            if (result.success) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert("Success", "M-Pesa disbursement completed successfully.");
+            } else {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              Alert.alert("Error", result.error || "M-Pesa transaction failed.");
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleReject = (payment: Payment) => {
@@ -139,17 +171,19 @@ export default function PayrollScreen() {
         </View>
 
         <View style={styles.filterRow}>
-          {(["all", "pending", "completed"] as const).map((f) => (
-            <TouchableOpacity
-              key={f}
-              style={[styles.filterChip, filter === f && styles.filterChipActive]}
-              onPress={() => setFilter(f)}
-            >
-              <Text style={[styles.filterText, filter === f && { color: COLORS.primary }]}>
-                {f.charAt(0).toUpperCase() + f.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+            {(["all", "pending", "approved", "completed"] as const).map((f) => (
+              <TouchableOpacity
+                key={f}
+                style={[styles.filterChip, filter === f && styles.filterChipActive]}
+                onPress={() => setFilter(f)}
+              >
+                <Text style={[styles.filterText, filter === f && { color: COLORS.primary }]}>
+                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
 
         {filtered.length === 0 ? (
@@ -160,7 +194,7 @@ export default function PayrollScreen() {
           </View>
         ) : (
           filtered.map((p) => (
-            <View key={p.id} style={[styles.card, { paddingHorizontal: 20 }]}>
+            <View key={p.id} style={styles.cardWrapper}>
               <View style={styles.payCard}>
                 <View style={styles.payCardHeader}>
                   <View>
@@ -176,41 +210,72 @@ export default function PayrollScreen() {
                     </View>
                   </View>
                 </View>
+                
                 <View style={styles.payMeta}>
                   <View style={styles.metaTag}>
-                    <Ionicons
-                      name={p.method === "mpesa" ? "phone-portrait" : "business"}
+                    <MaterialCommunityIcons
+                      name={p.method === "mpesa" ? "cellphone-arrow-down" : "bank"}
                       size={12}
-                      color={COLORS.textMuted}
+                      color={p.method === "mpesa" ? COLORS.primary : COLORS.textMuted}
                     />
-                    <Text style={styles.metaText}>{p.method === "mpesa" ? "M-Pesa" : "Bank Transfer"}</Text>
+                    <Text style={[styles.metaText, p.method === "mpesa" && { color: COLORS.primary, fontWeight: "600" }]}>
+                      {p.method === "mpesa" ? "M-Pesa B2C" : "Bank Transfer"}
+                    </Text>
                   </View>
                   <Text style={styles.metaText}>{p.reference}</Text>
                   <Text style={styles.metaText}>
                     {new Date(p.createdAt).toLocaleDateString("en-KE", { day: "numeric", month: "short" })}
                   </Text>
                 </View>
+
                 {p.status === "pending" && canApprove && (
                   <View style={styles.approvalRow}>
                     <TouchableOpacity
-                      style={[styles.approvalBtn, { backgroundColor: `${COLORS.success}15`, borderColor: `${COLORS.success}30` }]}
+                      style={[styles.approvalBtn, { backgroundColor: `${COLORS.info}15`, borderColor: `${COLORS.info}30` }]}
                       onPress={() => handleApprove(p)}
                     >
-                      <Ionicons name="checkmark" size={16} color={COLORS.success} />
-                      <Text style={[styles.approvalBtnText, { color: COLORS.success }]}>Approve</Text>
+                      <Ionicons name="checkmark-circle-outline" size={16} color={COLORS.info} />
+                      <Text style={[styles.approvalBtnText, { color: COLORS.info }]}>Approve</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.approvalBtn, { backgroundColor: `${COLORS.danger}15`, borderColor: `${COLORS.danger}30` }]}
                       onPress={() => handleReject(p)}
                     >
-                      <Ionicons name="close" size={16} color={COLORS.danger} />
+                      <Ionicons name="close-circle-outline" size={16} color={COLORS.danger} />
                       <Text style={[styles.approvalBtnText, { color: COLORS.danger }]}>Reject</Text>
                     </TouchableOpacity>
                   </View>
                 )}
+
+                {p.status === "approved" && (
+                  <View style={styles.executionRow}>
+                    {isCEO ? (
+                      <TouchableOpacity
+                        style={styles.payNowBtn}
+                        onPress={() => handlePayNow(p)}
+                        disabled={isProcessing === p.id}
+                      >
+                        {isProcessing === p.id ? (
+                          <ActivityIndicator color="#fff" size="small" />
+                        ) : (
+                          <>
+                            <MaterialCommunityIcons name="cellphone-arrow-down" size={18} color="#fff" />
+                            <Text style={styles.payNowBtnText}>Pay via M-Pesa Now</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={styles.ceoNotice}>
+                        <Ionicons name="lock-closed" size={12} color={COLORS.textMuted} />
+                        <Text style={styles.ceoNoticeText}>Awaiting CEO Disbursement</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
                 {p.approvedBy && (
                   <Text style={styles.approvedBy}>
-                    {p.status === "completed" ? "Approved" : "Actioned"} by {p.approvedBy}
+                    {p.status === "completed" ? "Disbursed" : "Approved"} by {p.approvedBy}
                   </Text>
                 )}
               </View>
@@ -242,11 +307,6 @@ export default function PayrollScreen() {
                       )}
                     </TouchableOpacity>
                   ))}
-                  {workers.length === 0 && (
-                    <Text style={{ color: COLORS.textMuted, fontSize: 13, fontFamily: "Inter_400Regular", padding: 8 }}>
-                      No workers registered
-                    </Text>
-                  )}
                 </ScrollView>
               </View>
               <View style={styles.formField}>
@@ -278,17 +338,6 @@ export default function PayrollScreen() {
                     <Text style={[styles.methodText, form.method === "bank" && { color: COLORS.primary }]}>Bank</Text>
                   </TouchableOpacity>
                 </View>
-              </View>
-              <View style={styles.formField}>
-                <Text style={styles.fieldLabel}>Notes</Text>
-                <TextInput
-                  style={[styles.fieldInput, { height: 80, textAlignVertical: "top" }]}
-                  placeholder="Payment notes..."
-                  placeholderTextColor={COLORS.textMuted}
-                  value={form.notes}
-                  onChangeText={(v) => setForm((p) => ({ ...p, notes: v }))}
-                  multiline
-                />
               </View>
             </ScrollView>
             <View style={styles.modalActions}>
@@ -338,7 +387,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   summaryLabel: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textSecondary },
-  filterRow: { flexDirection: "row", gap: 8, paddingHorizontal: 20, marginVertical: 16 },
+  filterRow: { paddingHorizontal: 20, marginVertical: 16 },
   filterChip: {
     paddingHorizontal: 16,
     paddingVertical: 7,
@@ -352,7 +401,7 @@ const styles = StyleSheet.create({
   empty: { alignItems: "center", paddingTop: 60, gap: 10, paddingHorizontal: 20 },
   emptyText: { fontFamily: "Inter_500Medium", color: COLORS.textSecondary, fontSize: 15 },
   emptySubText: { fontFamily: "Inter_400Regular", color: COLORS.textMuted, fontSize: 13 },
-  card: { marginBottom: 10 },
+  cardWrapper: { paddingHorizontal: 20, marginBottom: 12 },
   payCard: {
     backgroundColor: COLORS.surface,
     borderRadius: 14,
@@ -367,10 +416,10 @@ const styles = StyleSheet.create({
   payAmount: { fontFamily: "Inter_700Bold", fontSize: 16, color: COLORS.gold },
   statusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   statusText: { fontFamily: "Inter_600SemiBold", fontSize: 10, letterSpacing: 0.5 },
-  payMeta: { flexDirection: "row", gap: 12, flexWrap: "wrap" },
+  payMeta: { flexDirection: "row", gap: 12, flexWrap: "wrap", marginBottom: 12 },
   metaTag: { flexDirection: "row", alignItems: "center", gap: 4 },
   metaText: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },
-  approvalRow: { flexDirection: "row", gap: 10, marginTop: 12 },
+  approvalRow: { flexDirection: "row", gap: 10, marginTop: 4 },
   approvalBtn: {
     flex: 1,
     flexDirection: "row",
@@ -382,11 +431,34 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   approvalBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13 },
+  executionRow: { marginTop: 4 },
+  payNowBtn: {
+    backgroundColor: COLORS.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  payNowBtnText: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
+  ceoNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    backgroundColor: COLORS.surface2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  ceoNoticeText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
   approvedBy: {
     fontFamily: "Inter_400Regular",
     fontSize: 11,
     color: COLORS.textMuted,
-    marginTop: 8,
+    marginTop: 10,
     fontStyle: "italic",
   },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },

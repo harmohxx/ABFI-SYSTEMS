@@ -26,6 +26,7 @@ interface DataContextValue {
   deleteWorker: (id: string) => Promise<void>;
   addPayment: (data: Omit<Payment, "id" | "createdAt" | "updatedAt">) => Promise<void>;
   updatePayment: (id: string, data: Partial<Payment>) => Promise<void>;
+  executeMpesaPayment: (paymentId: string) => Promise<{ success: boolean; error?: string }>;
   addShop: (data: Omit<Shop, "id" | "createdAt" | "createdBy">) => Promise<void>;
   deleteShop: (id: string) => Promise<void>;
   addSale: (data: Omit<Sale, "id" | "createdAt" | "createdBy">) => Promise<void>;
@@ -148,6 +149,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await supabase.from("payments").update(data).eq("id", id);
   };
 
+  const executeMpesaPayment = async (paymentId: string): Promise<{ success: boolean; error?: string }> => {
+    const payment = payments.find(p => p.id === paymentId);
+    if (!payment) return { success: false, error: "Payment not found" };
+
+    // Simulate M-Pesa B2C API Call
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    const { error } = await supabase
+      .from("payments")
+      .update({ status: "completed", approvedBy: currentUser?.name })
+      .eq("id", paymentId);
+
+    if (error) return { success: false, error: "Failed to update payment status" };
+
+    await logAuditAction("MPESA_DISBURSEMENT", `M-Pesa disbursement of KES ${payment.amount} to ${payment.workerName} completed by CEO`);
+    return { success: true };
+  };
+
   const addShop = async (data: Omit<Shop, "id" | "createdAt" | "createdBy">) => {
     await supabase.from("shops").insert([{ ...data, createdBy: currentUser?.id }]);
   };
@@ -199,7 +218,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   const value = useMemo(() => ({
-    farmers: filteredFarmers, farms: filteredFarms, workers: filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, addFarmer, updateFarmer, deleteFarmer, addFarm, updateFarm, deleteFarm, addWorker, updateWorker, deleteWorker, addPayment, updatePayment, addShop, deleteShop, addSale, addProduct, updateProduct, deleteProduct, addStockTransaction, sendMessage, markMessageAsRead, refreshAuditLogs, lastSync,
+    farmers: filteredFarmers, farms: filteredFarms, workers: filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, addFarmer, updateFarmer, deleteFarmer, addFarm, updateFarm, deleteFarm, addWorker, updateWorker, deleteWorker, addPayment, updatePayment, executeMpesaPayment, addShop, deleteShop, addSale, addProduct, updateProduct, deleteProduct, addStockTransaction, sendMessage, markMessageAsRead, refreshAuditLogs, lastSync,
   }), [filteredFarmers, filteredFarms, filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, lastSync]);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
