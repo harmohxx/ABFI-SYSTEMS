@@ -50,6 +50,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     initializeAuth();
     checkBiometric();
+
+    // Real-time subscription for users table
+    const userChannel = supabase
+      .channel('public:users')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
+        fetchUsers();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(userChannel);
+    };
   }, []);
 
   const checkBiometric = async () => {
@@ -160,7 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const addUser = async (data: Omit<AppUser, "id" | "createdAt">) => {
-    await supabase.from("users").insert([data]);
+    await supabase.from("users").insert([{ ...data, createdAt: new Date().toISOString() }]);
     await fetchUsers();
   };
 
@@ -181,6 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       userRole: currentUser?.role || "system",
       action,
       details,
+      timestamp: new Date().toISOString()
     }]);
   };
 
