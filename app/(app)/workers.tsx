@@ -10,6 +10,7 @@ import {
   ScrollView,
   Platform,
   Alert,
+  Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, FontAwesome5 } from "@expo/vector-icons";
@@ -28,6 +29,7 @@ export default function WorkersScreen() {
   const bottom = Platform.OS === "web" ? 34 : insets.bottom;
 
   const [search, setSearch] = useState("");
+  const [selectedFarmId, setSelectedFarmId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({
     name: "", phone: "", role: "", wageType: "monthly" as Worker["wageType"],
@@ -36,12 +38,15 @@ export default function WorkersScreen() {
 
   const filtered = useMemo(
     () => workers.filter(
-      (w) =>
-        w.name.toLowerCase().includes(search.toLowerCase()) ||
-        w.role.toLowerCase().includes(search.toLowerCase()) ||
-        w.farmName.toLowerCase().includes(search.toLowerCase())
+      (w) => {
+        const matchesSearch = w.name.toLowerCase().includes(search.toLowerCase()) ||
+          w.role.toLowerCase().includes(search.toLowerCase()) ||
+          w.farmName.toLowerCase().includes(search.toLowerCase());
+        const matchesFarm = selectedFarmId ? w.farmId === selectedFarmId : true;
+        return matchesSearch && matchesFarm;
+      }
     ),
-    [workers, search]
+    [workers, search, selectedFarmId]
   );
 
   const canWrite = ["director", "manager", "field_officer"].includes(currentUser?.role || "");
@@ -80,6 +85,14 @@ export default function WorkersScreen() {
     ]);
   };
 
+  const handleCall = (phone: string) => {
+    Linking.openURL(`tel:${phone}`);
+  };
+
+  const handleSMS = (phone: string) => {
+    Linking.openURL(`sms:${phone}`);
+  };
+
   const wageLabel = (type: string, amount: number) => {
     if (!amount) return "";
     return `KES ${amount.toLocaleString()}/${type === "daily" ? "day" : type === "weekly" ? "wk" : "mo"}`;
@@ -108,6 +121,26 @@ export default function WorkersScreen() {
         />
       </View>
 
+      <View style={styles.farmFilterContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.farmFilterScroll}>
+          <TouchableOpacity
+            style={[styles.farmChip, !selectedFarmId && styles.farmChipActive]}
+            onPress={() => setSelectedFarmId(null)}
+          >
+            <Text style={[styles.farmChipText, !selectedFarmId && { color: COLORS.primary }]}>All Farms</Text>
+          </TouchableOpacity>
+          {farms.map((farm) => (
+            <TouchableOpacity
+              key={farm.id}
+              style={[styles.farmChip, selectedFarmId === farm.id && styles.farmChipActive]}
+              onPress={() => setSelectedFarmId(farm.id)}
+            >
+              <Text style={[styles.farmChipText, selectedFarmId === farm.id && { color: COLORS.primary }]}>{farm.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
       <FlatList
         data={filtered}
         keyExtractor={(i) => i.id}
@@ -116,8 +149,8 @@ export default function WorkersScreen() {
         ListEmptyComponent={
           <View style={styles.empty}>
             <FontAwesome5 name="hard-hat" size={44} color={COLORS.textMuted} />
-            <Text style={styles.emptyText}>No workers registered</Text>
-            {canWrite && <Text style={styles.emptySubText}>Tap + to add a worker</Text>}
+            <Text style={styles.emptyText}>No workers found</Text>
+            {canWrite && <Text style={styles.emptySubText}>Try adjusting your filters or add a worker</Text>}
           </View>
         }
         renderItem={({ item }) => (
@@ -150,19 +183,36 @@ export default function WorkersScreen() {
                     </Text>
                   </TouchableOpacity>
                 )}
+              </View>
+            </View>
+            
+            <View style={styles.cardFooter}>
+              <View style={styles.contactInfo}>
+                {item.phone ? (
+                  <View style={styles.detailRow}>
+                    <Ionicons name="call-outline" size={12} color={COLORS.textMuted} />
+                    <Text style={styles.detailText}>{item.phone}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <View style={styles.commBtns}>
+                {item.phone && (
+                  <>
+                    <TouchableOpacity onPress={() => handleCall(item.phone)} style={styles.commBtn}>
+                      <Ionicons name="call" size={14} color={COLORS.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleSMS(item.phone)} style={styles.commBtn}>
+                      <Ionicons name="chatbubble-ellipses" size={14} color={COLORS.info} />
+                    </TouchableOpacity>
+                  </>
+                )}
                 {isDirector && (
-                  <TouchableOpacity onPress={() => handleDelete(item)} style={{ padding: 4 }}>
-                    <Ionicons name="trash-outline" size={16} color={COLORS.danger} />
+                  <TouchableOpacity onPress={() => handleDelete(item)} style={[styles.commBtn, { borderColor: `${COLORS.danger}30` }]}>
+                    <Ionicons name="trash-outline" size={14} color={COLORS.danger} />
                   </TouchableOpacity>
                 )}
               </View>
             </View>
-            {item.phone ? (
-              <View style={styles.detailRow}>
-                <Ionicons name="call-outline" size={12} color={COLORS.textMuted} />
-                <Text style={styles.detailText}>{item.phone}</Text>
-              </View>
-            ) : null}
           </View>
         )}
       />
@@ -274,7 +324,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    margin: 16,
+    marginHorizontal: 16,
+    marginTop: 16,
     backgroundColor: COLORS.surface,
     borderRadius: 12,
     paddingHorizontal: 14,
@@ -283,14 +334,26 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   searchInput: { flex: 1, color: COLORS.text, fontFamily: "Inter_400Regular", fontSize: 14 },
-  empty: { alignItems: "center", paddingTop: 80, gap: 10 },
+  farmFilterContainer: { marginVertical: 12 },
+  farmFilterScroll: { paddingHorizontal: 16, gap: 8 },
+  farmChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  farmChipActive: { borderColor: COLORS.primary, backgroundColor: `${COLORS.primary}12` },
+  farmChipText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textSecondary },
+  empty: { alignItems: "center", paddingTop: 60, gap: 10 },
   emptyText: { fontFamily: "Inter_500Medium", color: COLORS.textSecondary, fontSize: 15 },
-  emptySubText: { fontFamily: "Inter_400Regular", color: COLORS.textMuted, fontSize: 13 },
+  emptySubText: { fontFamily: "Inter_400Regular", color: COLORS.textMuted, fontSize: 13, textAlign: "center", paddingHorizontal: 40 },
   card: {
     backgroundColor: COLORS.surface,
     borderRadius: 16,
     padding: 16,
-    marginBottom: 10,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
@@ -321,8 +384,24 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   statusBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 11 },
-  detailRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 },
+  cardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  contactInfo: { flex: 1 },
+  detailRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   detailText: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  commBtns: { flexDirection: "row", gap: 8 },
+  commBtn: {
+    width: 32, height: 32, borderRadius: 8,
+    backgroundColor: COLORS.surface2, alignItems: "center", justifyContent: "center",
+    borderWidth: 1, borderColor: COLORS.border,
+  },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
   modalSheet: {
     backgroundColor: COLORS.surface,
