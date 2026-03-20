@@ -47,6 +47,7 @@ export default function PayrollScreen() {
   const isDirector = currentUser?.role === "director";
   const canInitiate = ["director", "manager", "accountant"].includes(currentUser?.role || "");
   const canApprove = isDirector || isCEO;
+  const canExecute = isDirector || isCEO;
 
   const filtered = useMemo(() => {
     if (filter === "all") return payments;
@@ -104,8 +105,8 @@ export default function PayrollScreen() {
   };
 
   const handlePayNow = (payment: Payment) => {
-    if (!isCEO) {
-      Alert.alert("Access Denied", "Only the CEO can execute M-Pesa disbursements.");
+    if (!canExecute) {
+      Alert.alert("Access Denied", "Only the Director or CEO can execute M-Pesa disbursements.");
       return;
     }
 
@@ -249,7 +250,7 @@ export default function PayrollScreen() {
 
                 {p.status === "approved" && (
                   <View style={styles.executionRow}>
-                    {isCEO ? (
+                    {canExecute ? (
                       <TouchableOpacity
                         style={styles.payNowBtn}
                         onPress={() => handlePayNow(p)}
@@ -267,7 +268,7 @@ export default function PayrollScreen() {
                     ) : (
                       <View style={styles.ceoNotice}>
                         <Ionicons name="lock-closed" size={12} color={COLORS.textMuted} />
-                        <Text style={styles.ceoNoticeText}>Awaiting CEO Disbursement</Text>
+                        <Text style={styles.ceoNoticeText}>Awaiting CEO/Director Disbursement</Text>
                       </View>
                     )}
                   </View>
@@ -399,7 +400,7 @@ const styles = StyleSheet.create({
   filterChipActive: { borderColor: COLORS.primary, backgroundColor: `${COLORS.primary}12` },
   filterText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textSecondary },
   empty: { alignItems: "center", paddingTop: 60, gap: 10, paddingHorizontal: 20 },
-  emptyText: { fontFamily: "Inter_500Medium", color: COLORS.textSecondary, fontSize: 15 },
+  emptyText: { fontFamily: "Inter_500Medium", color: COLORS.textMuted, fontSize: 15 },
   emptySubText: { fontFamily: "Inter_400Regular", color: COLORS.textMuted, fontSize: 13 },
   cardWrapper: { paddingHorizontal: 20, marginBottom: 12 },
   payCard: {

@@ -78,6 +78,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [lastSync, setLastSync] = useState<Date | null>(null);
 
   const loadAll = async () => {
+    const isDirector = currentUser?.role === "director";
+    
+    const messagesQuery = isDirector 
+      ? supabase.from("messages").select("*")
+      : supabase.from("messages").select("*").or(`senderId.eq.${currentUser?.id},receiverId.eq.${currentUser?.id}`);
+
     const [f, fa, w, p, sh, sa, pr, st, al, m, ex, tk, act, ana, att] = await Promise.all([
       supabase.from("farmers").select("*"),
       supabase.from("farms").select("*"),
@@ -88,7 +94,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       supabase.from("products").select("*"),
       supabase.from("stock_transactions").select("*").order("createdAt", { ascending: false }),
       supabase.from("audit_logs").select("*").order("timestamp", { ascending: false }).limit(500),
-      supabase.from("messages").select("*").or(`senderId.eq.${currentUser?.id},receiverId.eq.${currentUser?.id}`).order("createdAt", { ascending: true }),
+      messagesQuery.order("createdAt", { ascending: true }),
       supabase.from("expenses").select("*").order("date", { ascending: false }),
       supabase.from("tasks").select("*").order("dueDate", { ascending: true }),
       supabase.from("farm_activities").select("*").order("timestamp", { ascending: false }),
@@ -183,7 +189,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await new Promise(resolve => setTimeout(resolve, 2000));
     const { error } = await supabase.from("payments").update({ status: "completed", approvedBy: currentUser?.name }).eq("id", paymentId);
     if (error) return { success: false, error: "Failed to update payment status" };
-    await logAuditAction("MPESA_DISBURSEMENT", `M-Pesa disbursement of KES ${payment.amount} to ${payment.workerName} completed by CEO`);
+    await logAuditAction("MPESA_DISBURSEMENT", `M-Pesa disbursement of KES ${payment.amount} to ${payment.workerName} completed by ${currentUser?.role}`);
     return { success: true };
   };
 
