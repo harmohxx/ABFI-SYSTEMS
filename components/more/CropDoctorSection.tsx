@@ -10,9 +10,11 @@ import {
   ActivityIndicator,
   Platform,
   Alert,
+  Image,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
 import { useData, CropAnalysis } from "@/context/DataContext";
 import { COLORS } from "@/constants/colors";
 
@@ -21,25 +23,27 @@ export function CropDoctorSection({ onBack }: { onBack: () => void }) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedFarmId, setSelectedFarmId] = useState("");
   const [result, setResult] = useState<CropAnalysis | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
 
   const handleScan = async () => {
     if (!selectedFarmId) return Alert.alert("Required", "Please select a farm first");
-    
+    setShowCamera(true);
+  };
+
+  const executeAnalysis = async () => {
     setIsAnalyzing(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     
-    // Simulated AI Analysis Logic
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, 3500));
     
     const farm = farms.find(f => f.id === selectedFarmId);
     const mockDiagnoses = [
-      { issue: "Maize Lethal Necrosis", diagnosis: "Viral infection causing yellowing and drying of leaves.", recommendation: "Remove infected plants immediately. Use certified seeds for next season. Control aphids and thrips.", confidence: 0.94 },
-      { issue: "Fall Armyworm", diagnosis: "Pest infestation causing ragged holes in leaves and damaged cobs.", recommendation: "Apply recommended insecticides (e.g., Belt or Radiant). Handpick larvae if infestation is low.", confidence: 0.88 },
-      { issue: "Late Blight", diagnosis: "Fungal disease causing dark, water-soaked spots on leaves.", recommendation: "Apply fungicides containing Mancozeb or Metalaxyl. Improve drainage and spacing.", confidence: 0.91 }
+      { issue: "Maize Lethal Necrosis", diagnosis: "Viral infection causing yellowing and drying of leaves.", recommendation: "Remove infected plants immediately. Use certified seeds. Control aphids.", confidence: 0.94 },
+      { issue: "Fall Armyworm", diagnosis: "Pest infestation causing ragged holes in leaves.", recommendation: "Apply Belt or Radiant insecticide. Handpick larvae if possible.", confidence: 0.88 },
+      { issue: "Nitrogen Deficiency", diagnosis: "Stunted growth and pale green/yellow leaves.", recommendation: "Apply Top-dressing fertilizer (CAN or Urea). Ensure proper weeding.", confidence: 0.92 }
     ];
     
     const randomDiagnosis = mockDiagnoses[Math.floor(Math.random() * mockDiagnoses.length)];
-    
     const newAnalysis = {
       farmId: selectedFarmId,
       farmName: farm?.name || "Unknown Farm",
@@ -53,8 +57,38 @@ export function CropDoctorSection({ onBack }: { onBack: () => void }) {
     await addCropAnalysis(newAnalysis);
     setResult({ ...newAnalysis, id: Date.now().toString(), createdAt: new Date().toISOString() });
     setIsAnalyzing(false);
+    setShowCamera(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
+
+  if (showCamera) {
+    return (
+      <View style={styles.cameraContainer}>
+        <View style={styles.cameraHeader}>
+          <TouchableOpacity onPress={() => setShowCamera(false)}><Ionicons name="close" size={28} color="#fff" /></TouchableOpacity>
+          <Text style={styles.cameraTitle}>AI Scanner</Text>
+          <View style={{ width: 28 }} />
+        </View>
+        <View style={styles.viewfinder}>
+          <View style={styles.scanLine} />
+          <View style={styles.cornerTL} /><View style={styles.cornerTR} />
+          <View style={styles.cornerBL} /><View style={styles.cornerBR} />
+          {isAnalyzing && (
+            <View style={styles.analyzingOverlay}>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+              <Text style={styles.analyzingText}>Analyzing Crop Health...</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.cameraFooter}>
+          <Text style={styles.cameraHint}>Align the affected leaf within the frame</Text>
+          <TouchableOpacity style={styles.shutterBtn} onPress={executeAnalysis} disabled={isAnalyzing}>
+            <View style={styles.shutterInner} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1 }}>
@@ -66,14 +100,14 @@ export function CropDoctorSection({ onBack }: { onBack: () => void }) {
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
         <View style={styles.aiCard}>
           <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.aiGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-            <MaterialCommunityIcons name="robot-outline" size={40} color="#fff" />
-            <Text style={styles.aiTitle}>AI Crop Diagnosis</Text>
-            <Text style={styles.aiDesc}>Identify pests, diseases, and nutrient deficiencies instantly using our trained AI model.</Text>
+            <MaterialCommunityIcons name="robot-deeplocal" size={44} color="#fff" />
+            <Text style={styles.aiTitle}>AI Diagnosis</Text>
+            <Text style={styles.aiDesc}>Identify pests and diseases instantly using our trained AI model.</Text>
           </LinearGradient>
         </View>
 
         <View style={styles.formField}>
-          <Text style={styles.fieldLabel}>Select Farm to Scan</Text>
+          <Text style={styles.fieldLabel}>Select Farm</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
             {farms.map(f => (
               <TouchableOpacity key={f.id} style={[styles.catBtn, selectedFarmId === f.id && styles.catBtnActive]} onPress={() => setSelectedFarmId(f.id)}>
@@ -83,21 +117,15 @@ export function CropDoctorSection({ onBack }: { onBack: () => void }) {
           </ScrollView>
         </View>
 
-        <TouchableOpacity style={[styles.scanBtn, isAnalyzing && { opacity: 0.7 }]} onPress={handleScan} disabled={isAnalyzing}>
-          {isAnalyzing ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <>
-              <Ionicons name="scan" size={20} color="#fff" />
-              <Text style={styles.scanBtnText}>Start AI Analysis</Text>
-            </>
-          )}
+        <TouchableOpacity style={styles.scanBtn} onPress={handleScan}>
+          <Ionicons name="camera" size={20} color="#fff" />
+          <Text style={styles.scanBtnText}>Open AI Scanner</Text>
         </TouchableOpacity>
 
         {result && (
           <View style={styles.resultCard}>
             <View style={styles.resultHeader}>
-              <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
+              <Ionicons name="shield-checkmark" size={24} color={COLORS.success} />
               <View>
                 <Text style={styles.resultTitle}>{result.issue}</Text>
                 <Text style={styles.resultConfidence}>AI Confidence: {(result.confidence * 100).toFixed(1)}%</Text>
@@ -109,7 +137,7 @@ export function CropDoctorSection({ onBack }: { onBack: () => void }) {
             </View>
             <View style={styles.resultSection}>
               <Text style={styles.resultLabel}>RECOMMENDATION</Text>
-              <Text style={[styles.resultText, { color: COLORS.primary, fontWeight: "600" }]}>{result.recommendation}</Text>
+              <Text style={[styles.resultText, { color: COLORS.primary, fontWeight: "700" }]}>{result.recommendation}</Text>
             </View>
           </View>
         )}
@@ -129,8 +157,6 @@ export function CropDoctorSection({ onBack }: { onBack: () => void }) {
     </View>
   );
 }
-
-import { LinearGradient } from "expo-linear-gradient";
 
 const styles = StyleSheet.create({
   subHeader: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: Platform.OS === "web" ? 80 : 56, paddingBottom: 14, backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: 8 },
@@ -159,4 +185,20 @@ const styles = StyleSheet.create({
   historyIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: `${COLORS.primary}15`, alignItems: "center", justifyContent: "center" },
   historyTitle: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
   historyMeta: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  
+  cameraContainer: { flex: 1, backgroundColor: "#000" },
+  cameraHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20 },
+  cameraTitle: { color: "#fff", fontFamily: "Inter_700Bold", fontSize: 18 },
+  viewfinder: { flex: 1, margin: 40, borderRadius: 24, borderWidth: 2, borderColor: "rgba(255,255,255,0.3)", overflow: "hidden", justifyContent: "center", alignItems: "center" },
+  scanLine: { position: "absolute", width: "100%", height: 2, backgroundColor: COLORS.primary, top: "50%" },
+  cornerTL: { position: "absolute", top: 0, left: 0, width: 40, height: 40, borderTopWidth: 4, borderLeftWidth: 4, borderColor: COLORS.primary },
+  cornerTR: { position: "absolute", top: 0, right: 0, width: 40, height: 40, borderTopWidth: 4, borderRightWidth: 4, borderColor: COLORS.primary },
+  cornerBL: { position: "absolute", bottom: 0, left: 0, width: 40, height: 40, borderBottomWidth: 4, borderLeftWidth: 4, borderColor: COLORS.primary },
+  cornerBR: { position: "absolute", bottom: 0, right: 0, width: 40, height: 40, borderBottomWidth: 4, borderRightWidth: 4, borderColor: COLORS.primary },
+  analyzingOverlay: { backgroundColor: "rgba(0,0,0,0.7)", padding: 20, borderRadius: 16, alignItems: "center", gap: 12 },
+  analyzingText: { color: "#fff", fontFamily: "Inter_600SemiBold" },
+  cameraFooter: { padding: 40, alignItems: "center", gap: 20 },
+  cameraHint: { color: "rgba(255,255,255,0.6)", fontFamily: "Inter_400Regular", fontSize: 14 },
+  shutterBtn: { width: 72, height: 72, borderRadius: 36, backgroundColor: "#fff", padding: 4 },
+  shutterInner: { flex: 1, borderRadius: 32, borderWidth: 2, borderColor: "#000" },
 });
