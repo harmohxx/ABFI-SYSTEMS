@@ -24,12 +24,13 @@ import { ExpensesSection } from "@/components/more/ExpensesSection";
 import { TasksSection } from "@/components/more/TasksSection";
 import { FarmActivitiesSection } from "@/components/more/FarmActivitiesSection";
 import { CropDoctorSection } from "@/components/more/CropDoctorSection";
+import { AttendanceSection } from "@/components/more/AttendanceSection";
 
-type Section = "main" | "sales" | "stock" | "users" | "audit" | "expenses" | "tasks" | "activities" | "doctor";
+type Section = "main" | "sales" | "stock" | "users" | "audit" | "expenses" | "tasks" | "activities" | "doctor" | "attendance";
 
 export default function MoreScreen() {
   const { currentUser, users, logout } = useAuth();
-  const { sales, products, auditLogs, refreshAuditLogs, expenses, tasks, farmActivities, cropAnalyses } = useData();
+  const { sales, products, auditLogs, refreshAuditLogs, expenses, tasks, farmActivities, cropAnalyses, attendance } = useData();
   const insets = useSafeAreaInsets();
   const top = Platform.OS === "web" ? 67 : insets.top;
   const bottom = Platform.OS === "web" ? 34 : insets.bottom;
@@ -47,6 +48,7 @@ export default function MoreScreen() {
   if (section === "tasks") return <TasksSection onBack={() => setSection("main")} />;
   if (section === "activities") return <FarmActivitiesSection onBack={() => setSection("main")} />;
   if (section === "doctor") return <CropDoctorSection onBack={() => setSection("main")} />;
+  if (section === "attendance") return <AttendanceSection onBack={() => setSection("main")} />;
 
   return (
     <View style={styles.container}>
@@ -64,6 +66,7 @@ export default function MoreScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>FARM OPERATIONS</Text>
           <MenuItem icon={<Ionicons name="calendar" size={22} color={COLORS.primary} />} label="Farm Activities" sub={`${farmActivities.length} records logged`} accent={COLORS.primary} onPress={() => setSection("activities")} />
+          <MenuItem icon={<Ionicons name="people-circle" size={22} color={COLORS.warning} />} label="Worker Attendance" sub={`${attendance.filter(a => a.date === new Date().toISOString().slice(0, 10)).length} marked today`} accent={COLORS.warning} onPress={() => setSection("attendance")} />
           <MenuItem icon={<MaterialCommunityIcons name="robot-outline" size={22} color={COLORS.info} />} label="Crop Doctor (AI)" sub={`${cropAnalyses.length} diagnoses`} accent={COLORS.info} onPress={() => setSection("doctor")} />
           <MenuItem icon={<Ionicons name="checkbox" size={22} color={COLORS.success} />} label="Task Management" sub={`${tasks.filter(t=>t.status!=="completed").length} pending tasks`} accent={COLORS.success} onPress={() => setSection("tasks")} />
         </View>

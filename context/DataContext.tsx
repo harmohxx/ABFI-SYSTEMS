@@ -10,7 +10,7 @@ export interface Worker { id: string; farmId: string; farmName: string; name: st
 export interface Payment { id: string; workerId: string; workerName: string; farmId: string; farmName: string; amount: number; method: "mpesa" | "bank"; status: "pending" | "approved" | "rejected" | "completed"; initiatedBy: string; approvedBy: string | null; reference: string; notes: string; createdAt: string; updatedAt: string; }
 export interface Shop { id: string; name: string; location: string; managerId: string; active: boolean; createdBy: string; createdAt: string; }
 export interface Sale { id: string; shopId: string; shopName: string; products: Array<{ name: string; quantity: number; unitPrice: number }>; totalRevenue: number; recordedBy: string; date: string; createdBy: string; createdAt: string; }
-export interface Product { id: string; name: string; unit: string; currentStock: number; minStock: number; location: "warehouse" | string; createdBy: string; createdAt: string; }
+export interface Product { id: string; name: string; unit: string; currentStock: number; minStock: number; location: "warehouse" | string; shopStock?: Record<string, number>; createdBy: string; createdAt: string; }
 export interface StockTransaction { id: string; productId: string; productName: string; type: "in" | "out"; quantity: number; shopId: string | null; notes: string; recordedBy: string; createdBy: string; createdAt: string; }
 export interface AuditLog { id: string; userId: string; userName: string; userRole: string; action: string; details: string; timestamp: string; }
 export interface Message { id: string; senderId: string; receiverId: string; content: string; isRead: boolean; createdAt: string; }
@@ -18,10 +18,11 @@ export interface Expense { id: string; category: string; amount: number; farmId:
 export interface Task { id: string; title: string; description: string; farmId: string; farmName: string; assignedToId: string | null; assignedToName: string | null; dueDate: string; status: "pending" | "in_progress" | "completed"; priority: "low" | "medium" | "high"; createdBy: string; createdAt: string; }
 export interface FarmActivity { id: string; farmId: string; farmName: string; userId: string; userName: string; activityType: string; description: string; timestamp: string; }
 export interface CropAnalysis { id: string; farmId: string; farmName: string; cropType: string; issue: string; diagnosis: string; recommendation: string; confidence: number; createdAt: string; }
+export interface Attendance { id: string; workerId: string; workerName: string; farmId: string; farmName: string; date: string; status: "present" | "absent" | "half_day"; clockIn: string | null; clockOut: string | null; recordedBy: string; createdAt: string; }
 
 interface DataContextValue {
   farmers: Farmer[]; farms: Farm[]; workers: Worker[]; payments: Payment[]; shops: Shop[]; sales: Sale[]; products: Product[]; stockTransactions: StockTransaction[]; auditLogs: AuditLog[]; messages: Message[]; expenses: Expense[]; tasks: Task[];
-  farmActivities: FarmActivity[]; cropAnalyses: CropAnalysis[];
+  farmActivities: FarmActivity[]; cropAnalyses: CropAnalysis[]; attendance: Attendance[];
   addFarmer: (data: Omit<Farmer, "id" | "createdAt" | "createdBy">) => Promise<void>;
   updateFarmer: (id: string, data: Partial<Farmer>) => Promise<void>;
   deleteFarmer: (id: string) => Promise<void>;
@@ -50,6 +51,7 @@ interface DataContextValue {
   deleteTask: (id: string) => Promise<void>;
   addFarmActivity: (data: Omit<FarmActivity, "id" | "timestamp" | "userId" | "userName">) => Promise<void>;
   addCropAnalysis: (data: Omit<CropAnalysis, "id" | "createdAt">) => Promise<void>;
+  markAttendance: (data: Omit<Attendance, "id" | "createdAt" | "recordedBy">) => Promise<void>;
   refreshAuditLogs: () => Promise<void>;
   lastSync: Date | null;
 }
@@ -72,10 +74,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [farmActivities, setFarmActivities] = useState<FarmActivity[]>([]);
   const [cropAnalyses, setCropAnalyses] = useState<CropAnalysis[]>([]);
+  const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [lastSync, setLastSync] = useState<Date | null>(null);
 
   const loadAll = async () => {
-    const [f, fa, w, p, sh, sa, pr, st, al, m, ex, tk, act, ana] = await Promise.all([
+    const [f, fa, w, p, sh, sa, pr, st, al, m, ex, tk, act, ana, att] = await Promise.all([
       supabase.from("farmers").select("*"),
       supabase.from("farms").select("*"),
       supabase.from("workers").select("*"),
@@ -90,6 +93,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       supabase.from("tasks").select("*").order("dueDate", { ascending: true }),
       supabase.from("farm_activities").select("*").order("timestamp", { ascending: false }),
       supabase.from("crop_analyses").select("*").order("createdAt", { ascending: false }),
+      supabase.from("attendance").select("*").order("date", { ascending: false }),
     ]);
     if (f.data) setFarmers(f.data);
     if (fa.data) setFarms(fa.data);
@@ -105,13 +109,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (tk.data) setTasks(tk.data);
     if (act.data) setFarmActivities(act.data);
     if (ana.data) setCropAnalyses(ana.data);
+    if (att.data) setAttendance(att.data);
     setLastSync(new Date());
   };
 
   useEffect(() => {
     if (currentUser) {
       loadAll();
-      const tables = ["farmers", "farms", "workers", "payments", "shops", "sales", "products", "stock_transactions", "audit_logs", "messages", "expenses", "tasks", "farm_activities", "crop_analyses"];
+      const tables = ["farmers", "farms", "workers", "payments", "shops", "sales", "products", "stock_transactions", "audit_logs", "messages", "expenses", "tasks", "farm_activities", "crop_analyses", "attendance"];
       const channels = tables.map(table => 
         supabase
           .channel(`public:${table}`)
@@ -195,7 +200,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   const addProduct = async (data: Omit<Product, "id" | "createdAt" | "createdBy">) => {
-    await supabase.from("products").insert([{ ...data, createdBy: currentUser?.id }]);
+    await supabase.from("products").insert([{ ...data, createdBy: currentUser?.id, shopStock: {} }]);
   };
   const updateProduct = async (id: string, data: Partial<Product>) => {
     await supabase.from("products").update(data).eq("id", id);
@@ -209,7 +214,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const product = products.find((p) => p.id === data.productId);
     if (product) {
       const newStock = data.type === "in" ? product.currentStock + data.quantity : Math.max(0, product.currentStock - data.quantity);
-      await updateProduct(data.productId, { currentStock: newStock });
+      
+      // Update shop-specific stock if shopId is provided
+      let newShopStock = { ...(product.shopStock || {}) };
+      if (data.shopId) {
+        const currentShopStock = newShopStock[data.shopId] || 0;
+        newShopStock[data.shopId] = data.type === "in" ? currentShopStock + data.quantity : Math.max(0, currentShopStock - data.quantity);
+      }
+
+      await updateProduct(data.productId, { currentStock: newStock, shopStock: newShopStock });
       
       // CEO Notification Logic for Low Stock
       if (newStock <= product.minStock) {
@@ -261,14 +274,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await logAuditAction("CROP_ANALYSIS", `AI Analysis performed for ${data.farmName}`);
   };
 
+  const markAttendance = async (data: Omit<Attendance, "id" | "createdAt" | "recordedBy">) => {
+    await supabase.from("attendance").insert([{
+      ...data,
+      recordedBy: currentUser?.name || "System",
+      createdAt: new Date().toISOString()
+    }]);
+    await logAuditAction("ATTENDANCE_MARKED", `Attendance marked for ${data.workerName} as ${data.status}`);
+  };
+
   const refreshAuditLogs = async () => {
     const { data } = await supabase.from("audit_logs").select("*").order("timestamp", { ascending: false }).limit(500);
     if (data) setAuditLogs(data);
   };
 
   const value = useMemo(() => ({
-    farmers: filteredFarmers, farms: filteredFarms, workers: filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, expenses, tasks, farmActivities, cropAnalyses, addFarmer, updateFarmer, deleteFarmer, addFarm, updateFarm, deleteFarm, addWorker, updateWorker, deleteWorker, addPayment, updatePayment, executeMpesaPayment, addShop, deleteShop, addSale, addProduct, updateProduct, deleteProduct, addStockTransaction, sendMessage, markMessageAsRead, addExpense, deleteExpense, addTask, updateTask, deleteTask, addFarmActivity, addCropAnalysis, refreshAuditLogs, lastSync,
-  }), [filteredFarmers, filteredFarms, filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, expenses, tasks, farmActivities, cropAnalyses, lastSync]);
+    farmers: filteredFarmers, farms: filteredFarms, workers: filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, expenses, tasks, farmActivities, cropAnalyses, attendance, addFarmer, updateFarmer, deleteFarmer, addFarm, updateFarm, deleteFarm, addWorker, updateWorker, deleteWorker, addPayment, updatePayment, executeMpesaPayment, addShop, deleteShop, addSale, addProduct, updateProduct, deleteProduct, addStockTransaction, sendMessage, markMessageAsRead, addExpense, deleteExpense, addTask, updateTask, deleteTask, addFarmActivity, addCropAnalysis, markAttendance, refreshAuditLogs, lastSync,
+  }), [filteredFarmers, filteredFarms, filteredWorkers, payments, shops, sales, products, stockTransactions, auditLogs, messages, expenses, tasks, farmActivities, cropAnalyses, attendance, lastSync]);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }
